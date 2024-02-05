@@ -70,10 +70,12 @@ class Group:
 
         while True:
             message = await user_register_socket.recv_multipart()
-            
+
             username = message[0].decode()
             uuid = message[1].decode()
             action = message[2].decode()
+
+            print(f"LOG: {username} ({uuid}) requested to {action}")
 
             if action == "JOIN":
                 self.members[username] = uuid
@@ -103,7 +105,11 @@ class Group:
         
 
 if __name__ == "__main__":
-    group = Group("group1", "127.0.0.1", 6000)
-    group.register_to_server()
-    asyncio.run(group.session_management())
-        
+    try:
+        group = Group("group1", "127.0.0.1", 6000)
+        group.register_to_server()
+        asyncio.run(group.session_management())
+    finally:
+        group.async_context.term()
+        print("LOG: Group terminated")
+            

@@ -13,8 +13,9 @@ class User:
         self.username: str = username
         self.context: zmq.Context = zmq.Context()
         self.groupList: dict = dict()
-        self.group_server = None
-        self.group_port = None
+        self.group_message_url = None
+        self.group_management_url = None
+        self.group_name = None
 
         # generates the same UUID for the same username
         self.uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, self.username))
@@ -51,9 +52,6 @@ class User:
         ### Parameters
         - group_name : str = Name of the group
         """
-        # display all the servers, and ask the user to select one
-        # if not self.groupList:
-        #     self.get_list_of_groups(log=False)
         group_name: str = inquirer.select(
             message="Which group do you want to join?",
             choices=[Choice(group, group) for group in self.groupList]
@@ -72,10 +70,40 @@ class User:
         try:
             if (response[0].decode() == "SUCCESS"):
                 print(f"LOG: {self.username} joined the group {group_name}")
-                self.group_server = f"tcp://{self.groupList[group_name][0]}:{response[1].decode()}"
-                self.group_port = self.groupList[group_name][1]
+
+                messaging_port = int.from_bytes(response[1], "big")
+                self.group_message_url = f"tcp://{self.groupList[group_name][0]}:{messaging_port}"
+                self.group_management_url = f"tcp://{self.groupList[group_name][0]}:{self.groupList[group_name][1]}"
+                self.group_name = group_name
+
             else:
                 raise RuntimeError(response[0].decode())
+        finally:
+            # close the socket
+            socket.close()
+
+
+    def leave_group(self) -> None:
+        """
+        Leave the group
+        """
+        # create a socket and connected to message server
+        socket:zmq.Socket = self.context.socket(zmq.REQ)
+        socket.connect(self.group_management_url)
+
+        # send the message, i.e. username, and action
+        socket.send_multipart([self.username.encode(), self.uuid.encode(), "LEAVE".encode()])
+
+        # receive the response
+        response = socket.recv_string()
+        try:
+            if (response == "SUCCESS"):
+                print(f"LOG: {self.username} left the group {self.group_name}")
+                self.group_name = None
+                self.group_message_url = None
+                self.group_management_url = None
+            else:
+                raise RuntimeError(response)
         finally:
             # close the socket
             socket.close()
@@ -102,4 +130,16 @@ if __name__ == "__main__":
             break
 
         action()
+
+        if user.group_name is not None:
+            while user.group_name is not None:
+                action:callable = inquirer.select(
+                    message=f"({user.group_name}) What do you want to do?",
+                    choices=[
+                        Choice(lambda: user.leave_group(), "Leave group"),
+                    ]
+                ).execute()
+
+                action()
+
         print()
