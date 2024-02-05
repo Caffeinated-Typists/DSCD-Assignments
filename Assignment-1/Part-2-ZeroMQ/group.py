@@ -4,8 +4,8 @@ import zmq
 import ipaddress
 
 
-MESSAGE_SERVER_IP = "127.0.0.1"
-MESSAGE_SERVER_PORT = 5000
+MESSAGE_SERVER_IP:str = "127.0.0.1"
+MESSAGE_SERVER_PORT:int = 5000
 
 
 class Group:
@@ -21,6 +21,9 @@ class Group:
         self.ip_address:str = ip_address
         self.port:int = port
         self.async_context: zmq.asyncio.Context = zmq.asyncio.Context()
+        self.members:dict = dict()
+        self.messages:list[tuple] = list()
+        self.message_port = port + 1
 
         # check if IP address is valid
         if not self.is_valid_ip():
@@ -57,7 +60,36 @@ class Group:
             # close the socket
             socket.close()
             ctx.term()
-        
+    
+    async def session_management(self):
+        """
+        Registers the client to the group
+        """
+        user_register_socket = self.async_context.socket(zmq.REP)
+        user_register_socket.bind(f"tcp://*:{self.port}")
+
+        while True:
+            message = await user_register_socket.recv_multipart()
+            
+            username = message[0].decode()
+            uuid = message[1].decode()
+            action = message[2].decode()
+
+            if action == "JOIN":
+                self.members[username] = uuid
+                await user_register_socket.send_multipart([b"SUCCESS", self.message_port.to_bytes(2, "big")])
+                print(f"LOG: Join Request from {username} ({uuid}) accepted")
+
+            elif action == "LEAVE":
+                self.members.pop(username)
+                await user_register_socket.send_string("SUCCESS")
+                print(f"LOG: Leave Request from {username} ({uuid}) accepted")
+
+            else:
+                await user_register_socket.send_string("FAILURE")
+                print(f"LOG: Invalid action from {username} ({uuid})")
+
+
 
     def is_valid_ip(self) -> bool:
         """
@@ -71,6 +103,7 @@ class Group:
         
 
 if __name__ == "__main__":
-    group = Group("group1", "127.0.0.1", 5001)
+    group = Group("group1", "127.0.0.1", 6000)
     group.register_to_server()
+    asyncio.run(group.session_management())
         
