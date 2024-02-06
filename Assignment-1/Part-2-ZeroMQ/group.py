@@ -1,7 +1,9 @@
+from datetime import datetime
 import asyncio
 import zmq.asyncio
 import zmq
 import ipaddress
+import traceback
 
 
 MESSAGE_SERVER_IP:str = "127.0.0.1"
@@ -88,9 +90,54 @@ class Group:
                 print(f"LOG: Leave Request from {username} ({uuid}) accepted")
 
             else:
-                await user_register_socket.send_string("FAILURE")
+                await user_register_socket.send_string("FAILURE: Invalid action")
                 print(f"LOG: Invalid action from {username} ({uuid})")
 
+    async def message_management(self):
+        """
+        Manages the messages
+        """
+        message_socket = self.async_context.socket(zmq.REP)
+        message_socket.bind(f"tcp://*:{self.message_port}")
+
+        while True:
+            message = await message_socket.recv_multipart()
+
+            username = message[0].decode()
+            uuid = message[1].decode()
+            action = message[2].decode()
+
+            print(f"LOG: Request from {username} ({uuid}), action: {action} ")
+            
+            try:
+                if action == "SEND":
+                    self.messages.append((username, uuid, message[3].decode(), message[4].decode()))
+                    await message_socket.send_string("SUCCESS")
+                
+                elif action == "GET":
+                    
+                    after_time = message[3].decode()
+
+                    if after_time == "":
+                        await message_socket.send_multipart([b"SUCCESS", b"\n".join([f"[{time}] {username} ({uuid}): {usr_message}".encode() for username, uuid, time, usr_message in self.messages])])
+                    else:
+                        # find where to start
+                        start = 0
+                        after_time = datetime.strptime(after_time, "%d-%m-%y %H:%M:%S")
+                        for i, message in enumerate(self.messages):
+                            msg_date = datetime.strptime(message[2], "%d-%m-%y %H:%M:%S")
+                            if msg_date > after_time:
+                                start = i
+                                break
+                        
+                        await message_socket.send_multipart([b"SUCCESS", b"\n".join([f"[{time}] {username} ({uuid}): {usr_message}".encode() for username, uuid, time, usr_message in self.messages[start:]])])
+
+                else:
+                    await message_socket.send_string("FAILURE : Invalid action")
+
+            except Exception as e:
+                print(f"ERROR: {e}")
+                traceback.print_exc()
 
 
     def is_valid_ip(self) -> bool:
@@ -103,12 +150,18 @@ class Group:
         except ValueError:
             return False
         
+    async def run(self):
+        """
+        Run the group
+        """
+        await asyncio.gather(self.session_management(), self.message_management())
+        
 
 if __name__ == "__main__":
     try:
         group = Group("group1", "127.0.0.1", 6000)
         group.register_to_server()
-        asyncio.run(group.session_management())
+        asyncio.run(group.run())
     finally:
         group.async_context.term()
         print("LOG: Group terminated")
