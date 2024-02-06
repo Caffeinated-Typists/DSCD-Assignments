@@ -3,6 +3,7 @@ from InquirerPy.base.control import Choice
 from datetime import datetime
 import zmq
 import uuid
+import sys
 
 
 class User:
@@ -154,7 +155,12 @@ class User:
 
 
 if __name__ == "__main__":
-    user = User("user1")
+    # take in the username as CLI argument
+    if len(sys.argv) != 2:
+        print("Usage: python user.py <username>")
+        sys.exit(1)
+    
+    user = User(sys.argv[1])
 
     while True:
         action:callable = inquirer.select(
