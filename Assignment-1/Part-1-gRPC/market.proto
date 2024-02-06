@@ -15,8 +15,14 @@ service Market {
     rpc Rate (RateRequest) returns (Response) {}
 }
 
+
 message Response {
-    bool status = 1; 
+    enum Status {
+        SUCCESS = 0;
+        FAILURE = 1;
+        ERROR = 2;
+    }
+    Status status = 1; 
     string info = 2;
 }
 
