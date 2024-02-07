@@ -7,11 +7,14 @@ from concurrent import futures
 import market_pb2
 import market_pb2_grpc
 
+from statistics import mean
+
 class MarketServicer(market_pb2_grpc.MarketServicer):
-    sellers: list[str] = list()
     items: dict[int, market_pb2.Item] = dict()
-    item_ids: list[int] = list(range(1000, 0, -1))
+    sellers: list[str] = list()
     seller_items: dict[str, list[int]] = dict()
+    item_ratings: dict[int, dict[str, int]] = dict()
+    item_ids: list[int] = list(range(1000, 0, -1))
 
     # Seller functionality
     def Register(self, request, context):
@@ -54,6 +57,7 @@ class MarketServicer(market_pb2_grpc.MarketServicer):
             return response
         item.id = self.item_ids.pop()
         self.items[item.id] = item
+        self.item_ratings[item.id] = dict()
         self.seller_items[request.seller_uuid].append(item.id)
         response.status = market_pb2.Response.Status.SUCCESS
         return response
@@ -109,16 +113,55 @@ class MarketServicer(market_pb2_grpc.MarketServicer):
 
     # Buyer functionality
     def Search(self, request, context):
-        return super().Search(request, context)
+        logging.info(f"Search request from {context.peer()}\n{request}")
+        def filter(item):
+            if request.item_name.lower() not in item.name.lower():
+                return False
+            if request.item_category != "ANY" and request.item_category != item.category:
+                return False
+            return True
+        for item in self.items.values():
+            if filter(item):
+                yield item
 
     def Buy(self, request, context):
-        return super().Buy(request, context)
+        logging.info(f"Buy request from {context.peer()}\n{request}")
+        response = market_pb2.Response()
+        response.status = market_pb2.Response.Status.FAILURE
+        if request.item_id not in self.items.keys():
+            response.info = "Item ID invalid."
+            return response
+        if request.item_quantity > self.items[request.item_id].quantity:
+            response.info = "Item quantity unavailable."
+            return response
+        self.items[request.item_id].quantity -= request.item_quantity
+        response.status = market_pb2.Response.Status.SUCCESS
+        return response
 
     def Wishlist(self, request, context):
-        return super().Wishlist(request, context)
+        logging.info(f"Wishlist request from {context.peer()}\n{request}")
+        response = market_pb2.Response()
+        response.status = market_pb2.Response.Status.FAILURE
+        if request.item_id not in self.items.keys():
+            response.info = "Item ID invalid."
+            return response
+        response = market_pb2.Response.Status.SUCCESS
+        return response
 
     def Rate(self, request, context):
-        return super().Rate(request, context)
+        logging.info(f"Rate request from {context.peer()}\n{request}")
+        response = market_pb2.Response()
+        response.status = market_pb2.Response.Status.FAILURE
+        if request.item_id not in self.items.keys():
+            response.info = "Item ID invalid."
+            return response
+        if request.item_rating not in range(1, 5+1):
+            response.info = "Item rating value invalid."
+            return response
+        self.item_ratings[request.item_id][context.peer()] = request.item_rating
+        self.items[request.item_id].rating = mean(self.item_ratings[request.item_id].values())
+        response.status = market_pb2.Response.Status.SUCCESS
+        return response
 
 
 if __name__ == "__main__":
