@@ -20,28 +20,49 @@ class SellerShell(cmd.Cmd):
 
     def do_register(self, arg):
         "Resgister seller on the market if not registered already."
-        response = stub.Register(market_pb2.RegisterRequest(seller_uuid=self.uuid, notif_server_port=1))
-        print(market_pb2.Response.Status.Name(response.status), response)
+        request = market_pb2.RegisterRequest()
+        request.seller_uuid = self.uuid
+        request.notif_server_port = 1
+        response = stub.Register(request)
+        print(response)
 
     def do_sell(self, arg):
         "Sell a new item on the market."
-        response = stub.Sell(market_pb2.SellRequest(seller_uuid=self.uuid, item=market_pb2.Item()))
-        print(market_pb2.Response.Status.Name(response.status), response)
+        request = market_pb2.SellRequest()
+        request.seller_uuid = self.uuid
+        request.item_name = input("item name: ")
+        request.item_description = input("item description: ")
+        request.item_category = input("item category: ")
+        request.item_price = float(input("item price: "))
+        request.item_quantity = int(input("item quantity: "))
+        response = stub.Sell(request)
+        print(response)
 
     def do_update(self, arg):
         "Update an existing item on the market."
-        response = stub.Update(market_pb2.UpdateRequest(seller_uuid=self.uuid, item_id=0, item=market_pb2.Item()))
-        print(market_pb2.Response.Status.Name(response.status), response)
+        request = market_pb2.UpdateRequest()
+        request.seller_uuid = self.uuid
+        request.item_id = int(input("item id: "))
+        request.item_price = float(input("item price new: "))
+        request.item_quantity = int(input("item quantity new: "))
+        response = stub.Update(request)
+        print(response)
 
     def do_delete(self, arg):
         "Delete an item on the market."
-        response = stub.Delete(market_pb2.DeleteRequest(seller_uuid=self.uuid, item_id=0))
-        print(market_pb2.Response.Status.Name(response.status), response)
+        request = market_pb2.DeleteRequest()
+        request.seller_uuid = self.uuid
+        request.item_id = int(input("item id: "))
+        response = stub.Delete(request)
+        print(response)
 
     def do_display(self, arg):
         "Display all the uploaded items."
-        response = stub.Display(market_pb2.DisplayRequest(seller_uuid=self.uuid, seller_address="_"))
-        print(response)
+        request = market_pb2.DisplayRequest()
+        request.seller_uuid = self.uuid
+        response = stub.Display(request)
+        for item in response:
+            print(item)
 
 
 if __name__ == "__main__":

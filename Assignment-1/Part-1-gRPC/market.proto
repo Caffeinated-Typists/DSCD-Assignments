@@ -18,9 +18,9 @@ service Market {
 
 message Response {
     enum Status {
-        SUCCESS = 0;
-        FAILURE = 1;
-        ERROR = 2;
+        ERROR = 0;
+        SUCCESS = 1;
+        FAILURE = 2;
     }
     Status status = 1; 
     string info = 2;
@@ -35,13 +35,18 @@ message RegisterRequest {
 
 message SellRequest {
     string seller_uuid = 1;
-    Item item = 2;
+    string item_name = 2;
+    string item_description = 3;
+    string item_category = 4;
+    float item_price = 6;
+    int32 item_quantity = 5;
 }
 
 message UpdateRequest {
     string seller_uuid = 1;
     int32 item_id = 2;
-    Item item = 3;
+    float item_price = 3;
+    int32 item_quantity = 4;
 }
 
 message DeleteRequest {
@@ -63,7 +68,8 @@ message Item {
     ItemCategory category = 4;
     float rating = 5;
     int32 quantity = 6;
-    string seller_address = 7;
+    float price = 7;
+    string seller_address = 8;
 }
 
 enum ItemCategory {
