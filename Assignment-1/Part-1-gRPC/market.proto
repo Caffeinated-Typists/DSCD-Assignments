@@ -15,6 +15,10 @@ service Market {
     rpc Rate (RateRequest) returns (Response) {}
 }
 
+service Notification {
+    rpc Notify (NotifyRequest) returns (Response) {}
+
+}
 
 message Response {
     enum Status {
@@ -24,6 +28,11 @@ message Response {
     }
     Status status = 1; 
     string info = 2;
+}
+
+message NotifyRequest {
+    string info = 1;
+    Item item = 2;
 }
 
 // Seller Requests 
