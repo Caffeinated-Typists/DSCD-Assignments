@@ -13,6 +13,7 @@ class MarketServicer(market_pb2_grpc.MarketServicer):
     items: dict[int, market_pb2.Item] = dict()
     sellers: list[str] = list()
     seller_items: dict[str, list[int]] = dict()
+    seller_stubs: dict[str, market_pb2_grpc.NotificationStub] = dict()
     item_ratings: dict[int, dict[str, int]] = dict()
     item_ids: list[int] = list(range(1000, 0, -1))
 
@@ -24,6 +25,8 @@ class MarketServicer(market_pb2_grpc.MarketServicer):
         if request.seller_uuid not in self.sellers:
             self.sellers.append(request.seller_uuid)
             self.seller_items[request.seller_uuid] = list()
+            seller_notif_channel = grpc.insecure_channel(f"127.0.0.1:{request.notif_server_port}") # TODO: use context.peer()
+            self.seller_stubs[context.peer()] = market_pb2_grpc.NotificationStub(seller_notif_channel)
             response.status = market_pb2.Response.Status.SUCCESS
         else:
             response.info = "Seller already registered."
@@ -135,6 +138,9 @@ class MarketServicer(market_pb2_grpc.MarketServicer):
             response.info = "Item quantity unavailable."
             return response
         self.items[request.item_id].quantity -= request.item_quantity
+        # Notify seller
+        item = self.items[request.item_id]
+        self.seller_stubs[item.seller_address].Notify(market_pb2.NotifyRequest(item=item))
         response.status = market_pb2.Response.Status.SUCCESS
         return response
 
