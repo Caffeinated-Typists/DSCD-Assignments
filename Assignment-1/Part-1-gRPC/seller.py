@@ -11,7 +11,7 @@ from concurrent import futures
 
 class NotificationServicer(market_pb2_grpc.NotificationServicer):
     def Notify(self, request, context):
-        print(f"(Notification) Wishlisted item updated on market.")
+        print(f"(Notification) Wishlisted item purchased on market.")
         print(request)
         return market_pb2.Response(status=market_pb2.Response.Status.SUCCESS)
 

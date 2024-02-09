@@ -10,7 +10,7 @@ from concurrent import futures
 
 class NotificationServicer(market_pb2_grpc.NotificationServicer):
     def Notify(self, request, context):
-        print(f"(Notification) Listed item purchased on market.")
+        print(f"(Notification) Listed item updated on market.")
         print(request)
         return market_pb2.Response(status=market_pb2.Response.Status.SUCCESS)
 
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", type=str, dest="server_ip", default="localhost")
     parser.add_argument("-p", type=int, dest="server_port", default=50051)
-    parser.add_argument("-l", type=int, dest="listen_port", default=50052)
+    parser.add_argument("-l", type=int, dest="listen_port", default=50053)
     args = parser.parse_args()
 
     notification_servicer = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
