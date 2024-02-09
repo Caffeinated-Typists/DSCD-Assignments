@@ -15,6 +15,7 @@ class MarketServicer(market_pb2_grpc.MarketServicer):
     seller_items: dict[str, list[int]] = dict()
     seller_stubs: dict[str, market_pb2_grpc.NotificationStub] = dict()
     item_ratings: dict[int, dict[str, int]] = dict()
+    item_wishlists: dict[int, list[int]] = dict()
     item_ids: list[int] = list(range(1000, 0, -1))
 
     # Seller functionality
@@ -62,6 +63,7 @@ class MarketServicer(market_pb2_grpc.MarketServicer):
         self.items[item.id] = item
         self.item_ratings[item.id] = dict()
         self.seller_items[request.seller_uuid].append(item.id)
+        self.item_wishlists[item.id] = list()
         response.status = market_pb2.Response.Status.SUCCESS
         return response
 
@@ -86,6 +88,10 @@ class MarketServicer(market_pb2_grpc.MarketServicer):
             return response
         self.items[request.item_id].price = request.item_price
         self.items[request.item_id].quantity = request.item_quantity
+        for peer_port in self.item_wishlists[request.item_id]:
+            channel = grpc.insecure_channel(f"127.0.0.1:{peer_port}") # TODO: use context.peer()
+            stub = market_pb2_grpc.NotificationStub(channel)
+            stub.Notify(market_pb2.NotifyRequest(item=self.items[request.item_id]))
         response.status = market_pb2.Response.Status.SUCCESS
         return response
 
@@ -118,9 +124,13 @@ class MarketServicer(market_pb2_grpc.MarketServicer):
     def Search(self, request, context):
         logging.info(f"Search request from {context.peer()}\n{request}")
         def filter(item):
-            if request.item_name.lower() not in item.name.lower():
-                return False
-            if request.item_category != "ANY" and request.item_category != item.category:
+            if request.item_name != "":
+                if request.item_name.lower() not in item.name.lower():
+                    return False
+            if request.item_category.upper() not in "ANY":
+                for category in market_pb2.ItemCategory.keys():
+                    if request.item_category.upper() in category:
+                        return True
                 return False
             return True
         for item in self.items.values():
@@ -151,7 +161,8 @@ class MarketServicer(market_pb2_grpc.MarketServicer):
         if request.item_id not in self.items.keys():
             response.info = "Item ID invalid."
             return response
-        response = market_pb2.Response.Status.SUCCESS
+        self.item_wishlists[request.item_id].append(request.notif_server_port)
+        response.status = market_pb2.Response.Status.SUCCESS
         return response
 
     def Rate(self, request, context):

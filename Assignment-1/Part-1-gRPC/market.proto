@@ -36,7 +36,6 @@ message NotifyRequest {
 }
 
 // Seller Requests 
-
 message RegisterRequest {
     string seller_uuid = 1;
     int32 notif_server_port = 2;
@@ -69,7 +68,6 @@ message DisplayRequest {
 }
 
 // Item details
-
 message Item {
     int32 id = 1;
     string name = 2;
