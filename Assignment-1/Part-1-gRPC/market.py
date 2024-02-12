@@ -133,10 +133,8 @@ class MarketServicer(market_pb2_grpc.MarketServicer):
                 if request.item_name.lower() not in item.name.lower():
                     return False
             if request.item_category.upper() not in "ANY":
-                for category in market_pb2.ItemCategory.keys():
-                    if request.item_category.upper() in category:
-                        return True
-                return False
+                if request.item_category.upper() not in market_pb2.ItemCategory.Name(item.category):
+                    return False
             return True
         for item in self.items.values():
             if filter(item):
