@@ -11,8 +11,7 @@ from concurrent import futures
 
 class NotificationServicer(market_pb2_grpc.NotificationServicer):
     def Notify(self, request, context):
-        print(f"(Notification) Wishlisted item purchased on market.")
-        print(request)
+        print(f"\n(Notification) Wishlisted item purchased on market.\n{request}")
         return market_pb2.Response(status=market_pb2.Response.Status.SUCCESS)
 
 class SellerShell(cmd.Cmd):
@@ -27,6 +26,9 @@ class SellerShell(cmd.Cmd):
         self.stub = stub
         self.uuid = uuid
         self.notif_port = notif_port
+
+    def emptyline(self):
+        return False
 
     def do_register(self, arg):
         "Resgister seller on the market if not registered already."
