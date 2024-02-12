@@ -50,7 +50,7 @@ class MessageServer:
             message_parts = await user_socket.recv_multipart()
             message = [part.decode() for part in message_parts]
 
-            print(f"LOG: Request from {message[0]}")
+            print(f"LOG: Group List Request from {message[0]}")
 
             # send the server list
             await user_socket.send_json(self.serverList)

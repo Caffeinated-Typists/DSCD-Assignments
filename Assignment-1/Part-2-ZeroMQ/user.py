@@ -5,6 +5,8 @@ import zmq
 import uuid
 import sys
 
+MESSAGE_SERVER_IP:str = "127.0.0.1"
+MESSAGE_SERVER_PORT:int = 5001
 
 class User:
     """User class to handle the user
@@ -32,7 +34,7 @@ class User:
         """
         # create a socket and connected to message server
         socket:zmq.Socket = self.context.socket(zmq.REQ)
-        socket.connect("tcp://localhost:5001")
+        socket.connect(f"tcp://{MESSAGE_SERVER_IP}:{MESSAGE_SERVER_PORT}")
 
         # send the message, i.e. username
         socket.send_multipart([self.username.encode()])
@@ -156,10 +158,12 @@ class User:
 
 if __name__ == "__main__":
     # take in the username as CLI argument
-    if len(sys.argv) != 2:
-        print("Usage: python user.py <username>")
+    if len(sys.argv) != 4:
+        print("Usage: python user.py <username> <server_ip> <server_port>")
         sys.exit(1)
     
+    MESSAGE_SERVER_IP = sys.argv[2]
+    MESSAGE_SERVER_PORT = int(sys.argv[3])
     user = User(sys.argv[1])
 
     while True:

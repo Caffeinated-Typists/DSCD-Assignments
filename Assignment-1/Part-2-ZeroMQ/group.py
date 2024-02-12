@@ -46,7 +46,7 @@ class Group:
         socket = ctx.socket(zmq.REQ)
 
         # connect to the server
-        socket.connect("tcp://localhost:5000")
+        socket.connect(f"tcp://{MESSAGE_SERVER_IP}:{MESSAGE_SERVER_PORT}")
 
         # send the message, i.e. group name, ip address and port number
         socket.send_multipart([self.group_name.encode(), self.ip_address.encode(), str(self.port).encode()])
@@ -159,18 +159,13 @@ class Group:
         
 
 if __name__ == "__main__":
-    try:
-        # take in the group name, group IP address, group port, message server IP, message server port as CLI argument
-        if len(sys.argv) != 4:
-            print("Usage: python group.py <group_name> <ip_address> <port> <server_ip> <server_port>")
-            sys.exit(1)
+    # take in the group name, group IP address, group port, message server IP, message server port as CLI argument
+    if len(sys.argv) != 6:
+        print("Usage: python group.py <group_name> <ip_address> <port> <server_ip> <server_port>")
+        sys.exit(1)
 
-        MESSAGE_SERVER_IP = sys.argv[4]
-        MESSAGE_SERVER_PORT = int(sys.argv[5])
-        group = Group(sys.argv[1], sys.argv[2], int(sys.argv[3]))
-        group.register_to_server()
-        asyncio.run(group.run())
-    finally:
-        group.async_context.term()
-        print("LOG: Group terminated")
-            
+    MESSAGE_SERVER_IP = sys.argv[4]
+    MESSAGE_SERVER_PORT = int(sys.argv[5])
+    group = Group(sys.argv[1], sys.argv[2], int(sys.argv[3]))
+    group.register_to_server()
+    asyncio.run(group.run())            
