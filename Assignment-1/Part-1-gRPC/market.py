@@ -184,6 +184,9 @@ class MarketServicer(market_pb2_grpc.MarketServicer):
         if request.item_rating not in range(1, 5+1):
             response.info = "Item rating value invalid."
             return response
+        if unquote(context.peer()) in self.item_ratings[request.item_id].keys():
+            response.info = "Item already rated by buyer."
+            return response
         self.item_ratings[request.item_id][unquote(context.peer())] = request.item_rating
         self.items[request.item_id].rating = mean(self.item_ratings[request.item_id].values())
         response.status = market_pb2.Response.Status.SUCCESS
