@@ -93,9 +93,12 @@ class MarketServicer(market_pb2_grpc.MarketServicer):
         self.items[request.item_id].price = request.item_price
         self.items[request.item_id].quantity = request.item_quantity
         for peer in self.item_wishlists[request.item_id]:
-            channel = grpc.insecure_channel(peer)
-            stub = market_pb2_grpc.NotificationStub(channel)
-            stub.Notify(market_pb2.NotifyRequest(item=self.items[request.item_id]))
+            try:
+                channel = grpc.insecure_channel(peer)
+                stub = market_pb2_grpc.NotificationStub(channel)
+                stub.Notify(market_pb2.NotifyRequest(item=self.items[request.item_id]))
+            except:
+                logging.info(f"Failed to send update notification to {peer}")
         response.status = market_pb2.Response.Status.SUCCESS
         return response
 
@@ -154,9 +157,12 @@ class MarketServicer(market_pb2_grpc.MarketServicer):
         # Notify seller
         item = self.items[request.item_id]
         peer = self.getPeerIP(item.seller_address) + ':' + str(self.seller_addr[item.seller_address])
-        channel = grpc.insecure_channel(peer)
-        stub = market_pb2_grpc.NotificationStub(channel)
-        stub.Notify(market_pb2.NotifyRequest(item=item))
+        try:
+            channel = grpc.insecure_channel(peer)
+            stub = market_pb2_grpc.NotificationStub(channel)
+            stub.Notify(market_pb2.NotifyRequest(item=item))
+        except:
+            logging.info(f"Failed to send purchase notification to {peer}")
         response.status = market_pb2.Response.Status.SUCCESS
         return response
 
