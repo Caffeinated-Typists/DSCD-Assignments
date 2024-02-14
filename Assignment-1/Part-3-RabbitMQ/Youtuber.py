@@ -9,7 +9,7 @@ def publish_video(name:str, video_name:str)->None:
     
     print(f"Publishing {video_name} to {name}'s channel")
 
-    msg_body = {
+    msg_body:dict[str, str] = {
         "name": name,
         "video_name": video_name
     }
@@ -18,19 +18,19 @@ def publish_video(name:str, video_name:str)->None:
     channel = connection.channel()
     channel.exchange_declare(exchange='ingress', exchange_type='direct', durable=True)
     channel.queue_declare(queue='youtuber')
-    channel.queue_bind(exchange='ingress', queue='youtuber', routing_key='youtuber')
-    channel.basic_publish(exchange='ingress', routing_key='youtuber', body=str(msg_body))
+    channel.queue_bind(exchange='ingress', queue='youtuber', routing_key=name)
+    channel.basic_publish(exchange='ingress', routing_key=name, body=str(msg_body))
 
     print("Request sent to server.")
 
     connection.close()
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
+    if len(sys.argv) <= 2:
         print("Usage: Youtuber.py <youtuber_name> <video_name> ")
         sys.exit(1)
-    name = sys.argv[1]
-    video_name = " ".join(sys.argv[2:])
+    name:str = sys.argv[1]
+    video_name:str = " ".join(sys.argv[2:])
     publish_video(name, video_name)
     
 
