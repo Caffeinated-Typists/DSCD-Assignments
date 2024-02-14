@@ -18,6 +18,7 @@ def recieveNotifications(name:str)->None:
     channel.queue_declare(queue=name)
     channel.queue_bind(exchange='egress', queue=name, routing_key=name)
     channel.basic_consume(queue=name, on_message_callback=callback, auto_ack=True)
+    print("Recieving notifications from server, press CTRL+C to stop")
     channel.start_consuming()
     
 def updateSubscription(name:str, action:str, youtuber_name:str)->None:

@@ -88,10 +88,8 @@ def main():
     channel.basic_consume(queue='youtuber', on_message_callback=consumeYoutuberRequests, auto_ack=True)
     channel.basic_consume(queue='user', on_message_callback=consumeUserRequests, auto_ack=True)
     logging.info(f"In function main: Declared the exchange and queues")
-
-    # channel.queue_declare(queue='user')
-    # channel.queue_bind(exchange='ingress', queue='user', routing_key='user')
     
+    print("Server started, press CTRL+C to stop the server")
     channel.start_consuming()
 
 if __name__ == '__main__':
