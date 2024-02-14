@@ -162,3 +162,5 @@ cython_debug/
 
 # Adding test folder to ignore
 ./testing
+# Adding the logs folder to ignore
+./logs

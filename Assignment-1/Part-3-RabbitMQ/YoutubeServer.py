@@ -1,7 +1,7 @@
 import pika
 import logging
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(filename="./logs/YoutuberServer.log", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class SubscriberMap:
@@ -11,14 +11,14 @@ class SubscriberMap:
 
     def addSubscriber(self, user:str, youtuber:str)->None:
         if youtuber not in self.subscribers:
-            print("{youtuber} does not exist")
+            print(f"{youtuber} does not exist")
             return
         self.subscribers[youtuber].add(user)
         print(f"{user} has subscribed to {youtuber}")
 
     def removeSubscriber(self, user:str, youtuber:str)->None:
         if youtuber not in self.subscribers:
-            print("{youtuber} does not exist")
+            print(f"{youtuber} does not exist")
             return
         self.subscribers[youtuber].remove(user)
         print(f"{user} has unsubscribed from {youtuber}")
