@@ -1,6 +1,9 @@
 import sys
 import pika
 
+# host_add = 'localhost'
+host_add = 'http://146.148.105.34'
+
 def publish_video(name:str, video_name:str)->None:
     """Publishes the video name to the youtuber's channel
         Args: 
@@ -14,7 +17,7 @@ def publish_video(name:str, video_name:str)->None:
         "video_name": video_name
     }
 
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host = 'localhost'))
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host = host_add))
     channel = connection.channel()
     channel.exchange_declare(exchange='ingress', exchange_type='direct', durable=True)
     channel.queue_declare(queue='youtuber')

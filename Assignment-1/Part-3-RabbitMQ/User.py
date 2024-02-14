@@ -1,6 +1,9 @@
 import sys
 import pika
 
+# host_add = 'localhost'
+host_add = 'http://146.148.105.34'
+
 def callback(ch, method, properties, body):
     body = eval(body)
     youtube_name = body['youtuber_name']
@@ -12,7 +15,7 @@ def recieveNotifications(name:str)->None:
         Args:
             name: str: The name of the user"""
     
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host = 'localhost'))
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host = host_add))
     channel = connection.channel()
     channel.exchange_declare(exchange='egress', exchange_type='direct', durable=True)
     channel.queue_declare(queue=name)

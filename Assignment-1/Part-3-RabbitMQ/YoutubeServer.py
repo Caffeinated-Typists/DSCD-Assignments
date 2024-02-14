@@ -37,6 +37,7 @@ class SubscriberMap:
     
 subscriberMap:SubscriberMap
 channel:pika.adapters.blocking_connection.BlockingChannel
+host_addr = 'localhost'
 
 def consumeYoutuberRequests(ch, method, properties, body):
     logging.info(f"In function consumeYoutuberRequests: Got a message {body}")
@@ -78,7 +79,7 @@ def main():
     global subscriberMap
     subscriberMap = SubscriberMap()
 
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host = 'localhost', port = 5672))
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host = host_addr, port = 5672))
     global channel
     channel = connection.channel()
     logging.info(f"In function main: Created the connection and channel")
