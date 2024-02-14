@@ -36,6 +36,7 @@ class SubscriberMap:
         return list(self.subscribers[youtuber])
     
 subscriberMap:SubscriberMap
+channel:pika.adapters.blocking_connection.BlockingChannel
 
 def consumeYoutuberRequests(ch, method, properties, body):
     logging.info(f"In function consumeYoutuberRequests: Got a message {body}")
@@ -62,6 +63,15 @@ def consumeUserRequests(ch, method, properties, body):
 def notifyUsers(user:str, youtuber:str, video:str)->None:
     print(f"Sending notification to {user} for {youtuber}'s new video {video}")
     logging.info(f"In function notifyUsers: Sending notification to {user} for {youtuber}'s new video {video}")
+    msg_body:dict[str, str] = {
+        "youtuber_name": youtuber,
+        "video_name": video
+    }
+    channel.exchange_declare(exchange='egress', exchange_type='direct', durable=True)
+    channel.queue_declare(queue=user)
+    channel.queue_bind(exchange='egress', queue=user, routing_key=user)
+    channel.basic_publish(exchange='egress', routing_key=user, body=str(msg_body))
+    print("Notification sent to user.")
 
 def main():
 
@@ -69,10 +79,12 @@ def main():
     subscriberMap = SubscriberMap()
 
     connection = pika.BlockingConnection(pika.ConnectionParameters(host = 'localhost', port = 5672))
+    global channel
     channel = connection.channel()
     logging.info(f"In function main: Created the connection and channel")
 
     channel.exchange_declare(exchange='ingress', exchange_type='direct', durable=True)
+    channel.exchange_declare(exchange='egress', exchange_type='direct', durable=True)
     channel.basic_consume(queue='youtuber', on_message_callback=consumeYoutuberRequests, auto_ack=True)
     channel.basic_consume(queue='user', on_message_callback=consumeUserRequests, auto_ack=True)
     logging.info(f"In function main: Declared the exchange and queues")

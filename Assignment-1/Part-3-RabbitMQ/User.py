@@ -1,10 +1,24 @@
 import sys
 import pika
 
+def callback(ch, method, properties, body):
+    body = eval(body)
+    youtube_name = body['youtuber_name']
+    video_name = body['video_name']
+    print(f"New video from {youtube_name}: {video_name}")
+
 def recieveNotifications(name:str)->None:
     """Recieves notifications from the server
         Args:
             name: str: The name of the user"""
+    
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host = 'localhost'))
+    channel = connection.channel()
+    channel.exchange_declare(exchange='egress', exchange_type='direct', durable=True)
+    channel.queue_declare(queue=name)
+    channel.queue_bind(exchange='egress', queue=name, routing_key=name)
+    channel.basic_consume(queue=name, on_message_callback=callback, auto_ack=True)
+    channel.start_consuming()
     
 def updateSubscription(name:str, action:str, youtuber_name:str)->None:
     """Updates the subscription of the user
@@ -40,6 +54,6 @@ if __name__ == '__main__':
         print("Usage: User.py <user_name> [s/u] [youtuber_name]")
         sys.exit(1)
     name = sys.argv[1]
-    recieveNotifications(name)
     if len(sys.argv) == 4:
         updateSubscription(name, sys.argv[2], sys.argv[3])
+    recieveNotifications(name)
