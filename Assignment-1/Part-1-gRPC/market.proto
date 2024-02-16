@@ -1,0 +1,110 @@
+syntax = "proto3";
+
+service Market {
+    // Seller functionality
+    rpc Register (RegisterRequest) returns (Response) {}
+    rpc Sell (SellRequest) returns (Response) {}
+    rpc Update (UpdateRequest) returns (Response) {}
+    rpc Delete (DeleteRequest) returns (Response) {}
+    rpc Display (DisplayRequest) returns (stream Item) {} 
+
+    // Buyer functionality
+    rpc Search (SearchRequest) returns (stream Item) {}
+    rpc Buy (BuyRequest) returns (Response) {}
+    rpc Wishlist (WishlistRequest) returns (Response) {}
+    rpc Rate (RateRequest) returns (Response) {}
+}
+
+service Notification {
+    rpc Notify (NotifyRequest) returns (Response) {}
+
+}
+
+message Response {
+    enum Status {
+        ERROR = 0;
+        SUCCESS = 1;
+        FAILURE = 2;
+    }
+    Status status = 1; 
+    string info = 2;
+}
+
+message NotifyRequest {
+    string info = 1;
+    Item item = 2;
+}
+
+// Seller Requests 
+message RegisterRequest {
+    string seller_uuid = 1;
+    int32 notif_server_port = 2;
+}
+
+message SellRequest {
+    string seller_uuid = 1;
+    string item_name = 2;
+    string item_description = 3;
+    string item_category = 4;
+    float item_price = 6;
+    int32 item_quantity = 5;
+}
+
+message UpdateRequest {
+    string seller_uuid = 1;
+    int32 item_id = 2;
+    float item_price = 3;
+    int32 item_quantity = 4;
+}
+
+message DeleteRequest {
+    string seller_uuid = 1;
+    int32 item_id = 2;
+}
+
+message DisplayRequest {
+    string seller_uuid = 1;
+    string seller_address = 2;
+}
+
+// Item details
+message Item {
+    int32 id = 1;
+    string name = 2;
+    string description = 3;
+    ItemCategory category = 4;
+    float rating = 5;
+    int32 quantity = 6;
+    float price = 7;
+    string seller_address = 8;
+}
+
+enum ItemCategory {
+    UNSPECIFIED = 0;
+    ELECTRONICS = 1;
+    FASHION = 2;
+    OTHERS = 3;
+}
+
+// Buyer requests
+message SearchRequest {
+    string item_name = 1; 
+    string item_category = 2;
+}
+
+message BuyRequest {
+    int32 item_id = 1;
+    int32 item_quantity = 2;
+    int32 notif_server_port = 3;
+}
+
+message WishlistRequest {
+    int32 item_id = 1;
+    int32 notif_server_port = 2;
+}
+
+message RateRequest {
+    int32 item_id = 1;
+    int32 item_rating = 2;
+    int32 notif_server_port = 3;
+}
