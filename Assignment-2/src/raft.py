@@ -1,45 +1,72 @@
-from typing import Any
 import json
 import grpc
 from concurrent import futures
-import threading
 from random import randint
 from time import time
+from time import sleep
 
 import raft_pb2
 import raft_pb2_grpc
 
-class Raft:
+nodes = ["10.0.1.1", "10.0.1.2", "10.0.1.3", "10.0.1.4", "10.0.1.5"]
+stubs = dict()
 
-    def __init__(self) -> None:
+class RaftServicer(raft_pb2_grpc.RaftServicer):
+
+    def __init__(self):
+        super()
+        # TODO: add node identifier
         self.term:int = 0
-        self.voted_for:int = None
+        self.voted_for:int = -1
+        self.votes = set()
+        self.state:str = "FOLLOWER"
+        self.leader_id:int = -1
+        self.commit_idx:int = 0
+        self.server_idx:int = -1
+
         self.lease_timeout:float = 0
-        self.election_timeout:float = randint(5, 15)
-        self.leader_id:int = None
-        self.state:str = "follower"
+        self.election_timeout:float = -1
 
-    def __str__(self):
-        return f"term: {self.term}, voted_for: {self.voted_for}, heartbeat_timeout: {self.lease_timeout}, election_timeout: {self.election_timeout}, leader_id: {self.leader_id}, state: {self.state}"
-    
-    def new_term(self, term:int, state) -> bool:
-        # To be used when a new term is triggered
-        # Can be triggered by Election timeout, or recieving a higher term in an RPC
-        if term <= self.term:
-            return False
-        self.term = term
-        self.voted_for = None
-        self.leader_id = None
-        self.state = state
-        self.election_timeout = randint(5, 15)
+        self.election_period_ms = randint(1000, 5000)
+
+
+    def run(self):
+        self.set_election_timeout()
+
+
+    def set_election_timeout(self, timeout=None):
+        if timeout:
+            self.election_timeout = timeout
+        else:
+            self.election_timeout = time() + randint(self.election_period_ms, 2 * self.election_period_ms) / 1000.0
+
+    def on_election_timeout(self):
+        while True:
+            if time() > self.election_timeout and (self.state in ["FOLLOWER", "CANDIDATE"]):
+                self.set_election_timeout()
+                self.start_election()
+
+    def start_election(self):
+        self.state = "CANDIDATE"
+        self.voted_for = self.server_idx
+        self.term += 1
+        self.votes.add(self.server_idx)
+
+        # TODO: send RequestVote RPC to everyone
+        
         return True
+    
+    # RPC methods
+    def RequestVote(self, request, context):
+        return super().RequestVote(request, context)
 
-    def change_state(self, state:str) -> None:
-        # To be used when a node changes from candidate to leader or follower
-        self.state = state
+    def AppendEntries(self, request, context):
+        return super().AppendEntries(request, context)
 
-class Database():
+    def SendHeartbeat(self, request, context):
+        return super().SendHeartbeat(request, context)
 
+class DatabaseServicer(raft_pb2_grpc.DatabaseServicer):
     def __init__(self):
         self.data:dict
         try:
@@ -64,72 +91,24 @@ class Database():
     def dump_data(self)->None:
         with open("db.json", "w") as f:
             json.dump(self.data, f)
-        
-class Election():
 
-    def __init__(self, raft:Raft):
-        self.raft:Raft = raft
-        self.LAST_HEARTBEAT_TIME:float = time()
-
-    def __str__(self):
-        return f"term: {self.term}, candidate_id: {self.candidate_id}, last_log_idx: {self.last_log_idx}, last_log_term: {self.last_log_term}"
-    
-    def start_election(self) -> bool:
-        pass
-    
-    def send_vote_request(self) -> bool:
-        pass
-
-    def send_heartbeat(self) -> bool:
-        pass
-
-    def check_lease_timeout(self) -> bool:
-        pass
-
-    def check_election_timeout(self) -> bool:
-        pass
-
-    def handle_lease_timeout(self) -> bool:
-        pass
-
-    def handle_election_timeout(self) -> bool:
-        pass
-
-class LogReplication():
-
-    def __init__(self, term, leader_id, prev_log_idx, prev_log_term, leader_commit_idx, data):
-        pass
-
-    def __str__(self):
-        return f"term: {self.term}, leader_id: {self.leader_id}, prev_log_idx: {self.prev_log_idx}, prev_log_term: {self.prev_log_term}, leader_commit_idx: {self.leader_commit_idx}, data: {self.data}"
-
-class RaftServicer(raft_pb2_grpc.RaftServicer, Raft, Election, LogReplication, Database):
-
-    def __init__(self):
-        self.raft:Raft = Raft()
-        self.election:Election = Election()
-        self.log_replication:LogReplication = LogReplication()
-        self.database:Database = Database()
-
-    def RequestVote(self, request, context):
-        return super().RequestVote(request, context)
-
-    def AppendEntries(self, request, context):
-        return super().AppendEntries(request, context)
-
-    def SendHeartbeat(self, request, context):
-        return super().SendHeartbeat(request, context)
-
-class DatabaseServicer(raft_pb2_grpc.DatabaseServicer):
     def RequestData(self, request, context):
         return super().RequestData(request, context)
 
 if __name__ == "__main__":
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    raft_pb2_grpc.add_RaftServicer_to_server(RaftServicer(), server)
+    raft_servicer = RaftServicer()
+    raft_pb2_grpc.add_RaftServicer_to_server(raft_servicer, server)
     server.add_insecure_port(f"[::]:{4444}")
     try:
         server.start()
+        sleep(15)
+        # create stubs for all peers
+        for node in nodes:
+            channel = grpc.insecure_channel(node + ":4444")
+            stub = raft_pb2_grpc.RaftStub(channel)
+            stubs[node] = stub
+        raft_servicer.run()
         server.wait_for_termination()
     except KeyboardInterrupt:
         server.stop(grace=None)
