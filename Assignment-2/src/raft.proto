@@ -3,16 +3,11 @@ syntax = "proto3";
 service Raft {
     rpc AppendEntries (AppendEntriesRequest) returns (AppendEntriesResponse) {}
     rpc RequestVote (VoteRequest) returns (VoteResponse) {}
-    // TODO: add snapshot rpc
+    rpc InstallSnapshot (InstallSnapshotRequest) returns (InstallSnapshotResponse) {}
 }
 
 service Database {
     rpc RequestData (DbRequest) returns (DbResponse) {}
-}
-
-message Response {
-    int32 status = 1; 
-    string info = 2;
 }
 
 message DbRequest {
@@ -39,7 +34,7 @@ message AppendEntriesResponse {
     bool success = 2; // true if follower contained entry matching prev_log_idx and prev_log_term
 }
 
-message InstallSnapshot {
+message InstallSnapshotRequest {
     int32 term = 1; // leader's term
     int32 leader_id = 2; // so follower can redirect clients
     int32 last_incl_idx = 3; // index of the last log entry included in the snapshot
@@ -47,6 +42,10 @@ message InstallSnapshot {
     int32 offset = 5; // byte offset where chunk is positioned in the snapshot
     repeated Log data = 6; // raw bytes of the snapshot chunk, starting at offset
     bool done = 7; // true if this is the last chunk
+}
+
+message InstallSnapshotResponse {
+    int32 term = 1; // current term, for leader to update itself
 }
 
 message Log {

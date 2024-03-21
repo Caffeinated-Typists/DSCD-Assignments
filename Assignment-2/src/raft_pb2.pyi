@@ -6,14 +6,6 @@ from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Map
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
-class Response(_message.Message):
-    __slots__ = ("status", "info")
-    STATUS_FIELD_NUMBER: _ClassVar[int]
-    INFO_FIELD_NUMBER: _ClassVar[int]
-    status: int
-    info: str
-    def __init__(self, status: _Optional[int] = ..., info: _Optional[str] = ...) -> None: ...
-
 class DbRequest(_message.Message):
     __slots__ = ("type", "data")
     TYPE_FIELD_NUMBER: _ClassVar[int]
@@ -54,7 +46,7 @@ class AppendEntriesResponse(_message.Message):
     success: bool
     def __init__(self, term: _Optional[int] = ..., success: bool = ...) -> None: ...
 
-class InstallSnapshot(_message.Message):
+class InstallSnapshotRequest(_message.Message):
     __slots__ = ("term", "leader_id", "last_incl_idx", "last_incl_term", "offset", "data", "done")
     TERM_FIELD_NUMBER: _ClassVar[int]
     LEADER_ID_FIELD_NUMBER: _ClassVar[int]
@@ -71,6 +63,12 @@ class InstallSnapshot(_message.Message):
     data: _containers.RepeatedCompositeFieldContainer[Log]
     done: bool
     def __init__(self, term: _Optional[int] = ..., leader_id: _Optional[int] = ..., last_incl_idx: _Optional[int] = ..., last_incl_term: _Optional[int] = ..., offset: _Optional[int] = ..., data: _Optional[_Iterable[_Union[Log, _Mapping]]] = ..., done: bool = ...) -> None: ...
+
+class InstallSnapshotResponse(_message.Message):
+    __slots__ = ("term",)
+    TERM_FIELD_NUMBER: _ClassVar[int]
+    term: int
+    def __init__(self, term: _Optional[int] = ...) -> None: ...
 
 class Log(_message.Message):
     __slots__ = ("cmd", "key", "value")
