@@ -23,20 +23,20 @@ class DbResponse(_message.Message):
     def __init__(self, status: _Optional[int] = ..., data: _Optional[_Union[Log, _Mapping]] = ...) -> None: ...
 
 class AppendEntriesRequest(_message.Message):
-    __slots__ = ("term", "leader_id", "prev_log_idx", "prev_log_term", "leader_commit_idx", "data")
+    __slots__ = ("term", "leader_id", "prev_log_idx", "prev_log_term", "leader_commit_idx", "entries")
     TERM_FIELD_NUMBER: _ClassVar[int]
     LEADER_ID_FIELD_NUMBER: _ClassVar[int]
     PREV_LOG_IDX_FIELD_NUMBER: _ClassVar[int]
     PREV_LOG_TERM_FIELD_NUMBER: _ClassVar[int]
     LEADER_COMMIT_IDX_FIELD_NUMBER: _ClassVar[int]
-    DATA_FIELD_NUMBER: _ClassVar[int]
+    ENTRIES_FIELD_NUMBER: _ClassVar[int]
     term: int
     leader_id: int
     prev_log_idx: int
     prev_log_term: int
     leader_commit_idx: int
-    data: _containers.RepeatedCompositeFieldContainer[Log]
-    def __init__(self, term: _Optional[int] = ..., leader_id: _Optional[int] = ..., prev_log_idx: _Optional[int] = ..., prev_log_term: _Optional[int] = ..., leader_commit_idx: _Optional[int] = ..., data: _Optional[_Iterable[_Union[Log, _Mapping]]] = ...) -> None: ...
+    entries: _containers.RepeatedCompositeFieldContainer[Log]
+    def __init__(self, term: _Optional[int] = ..., leader_id: _Optional[int] = ..., prev_log_idx: _Optional[int] = ..., prev_log_term: _Optional[int] = ..., leader_commit_idx: _Optional[int] = ..., entries: _Optional[_Iterable[_Union[Log, _Mapping]]] = ...) -> None: ...
 
 class AppendEntriesResponse(_message.Message):
     __slots__ = ("term", "success")
@@ -71,7 +71,7 @@ class InstallSnapshotResponse(_message.Message):
     def __init__(self, term: _Optional[int] = ...) -> None: ...
 
 class Log(_message.Message):
-    __slots__ = ("cmd", "key", "value")
+    __slots__ = ("cmd", "key", "value", "term")
     class action(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
         __slots__ = ()
         GET: _ClassVar[Log.action]
@@ -81,10 +81,12 @@ class Log(_message.Message):
     CMD_FIELD_NUMBER: _ClassVar[int]
     KEY_FIELD_NUMBER: _ClassVar[int]
     VALUE_FIELD_NUMBER: _ClassVar[int]
+    TERM_FIELD_NUMBER: _ClassVar[int]
     cmd: Log.action
     key: str
     value: str
-    def __init__(self, cmd: _Optional[_Union[Log.action, str]] = ..., key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+    term: int
+    def __init__(self, cmd: _Optional[_Union[Log.action, str]] = ..., key: _Optional[str] = ..., value: _Optional[str] = ..., term: _Optional[int] = ...) -> None: ...
 
 class VoteRequest(_message.Message):
     __slots__ = ("term", "candidate_id", "last_log_idx", "last_log_term")
