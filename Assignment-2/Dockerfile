@@ -8,8 +8,10 @@ ENV PYTHONUNBUFFERED=1
 # Set the working directory
 WORKDIR /
 
-# Copy the src folder to the working directory
-COPY src/ /src
+COPY src/requirements.txt /src/requirements.txt
 
 # Install python dependencies
 RUN pip install --no-cache-dir -r /src/requirements.txt
+
+# Copy the src folder to the working directory
+COPY src/ /src
