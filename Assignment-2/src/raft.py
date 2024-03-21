@@ -22,98 +22,81 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
     def __init__(self):
         super()
-        # TODO: add node identifier
-        self.term:int = 0
-        self.voted_for:int = -1
-        self.votes = set()
-        self.state:str = "FOLLOWER"
-        self.leader_id:int = -1
-        self.commit_idx:int = 0
-        self.server_idx:int = -1
-
-        self.lease_timeout:float = 0
-        self.election_timeout:float = -1
-
-        self.election_period_ms = randint(1000, 5000)
-
-
-    def run(self):
-        self.set_election_timeout()
-
-    def set_election_timeout(self, timeout=None):
-        if timeout:
-            self.election_timeout = timeout
-        else:
-            self.election_timeout = time() + randint(self.election_period_ms, 2 * self.election_period_ms) / 1000.0
-
-    def on_election_timeout(self):
-        while True:
-            if time() > self.election_timeout and (self.state in ["FOLLOWER", "CANDIDATE"]):
-                self.set_election_timeout()
-                self.start_election()
-
-    def start_election(self):
-        self.state = "CANDIDATE"
-        self.voted_for = self.server_idx
-        self.term += 1
-        self.votes.add(self.server_idx)
-
-        # TODO: send RequestVote RPC to everyone
-        def make_rpc_call(stub):
-            request = raft_pb2.VoteRequest()
-            request.term = self.term
-            request.candidate_id = ID
-            request.last_log_idx = -1
-            request.last_log_term = -1
-
-            while True:
-                if self.state == 'CANDIDATE' and time() < self.election_timeout:
-                    response = stub.RequestVote(request)
-
-        threads = list()
-        for node,stub in stubs.items():
-            if node != NODES[ID]:
-                threads.append(threading.Thread(target=make_rpc_call, args=(stub,)))
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.stop()
+        # persistent state on all servers
+        self.current_term:int = 0
+        self.voted_for = None
+        self.log:list[raft_pb2.Log] = [raft_pb2.Log()] # log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
         
-        return True
-    
-    def step_down(self, term):
-        self.term = term
-        self.state = 'FOLLOWER'
-        self.voted_for = -1
-        self.set_election_timeout()
-    
+        # volatile state on all servers 
+        self.commit_index:int = 0 # index of highest log entry known to be committed (initialized to 0, increases monotonically)
+        self.last_applied:int = 0 # index of highest log entry applied to state machine (initialized to 0, increases monotonically)
+
+        # leader specific volatile state, reinitialized after election
+        self.next_index:dict = dict()
+        self.match_index:dict = dict()
+
+        # leader id
+        self.leader_id = None
+  
+
+    def is_up_to_date(self, last_log_term:int, last_log_index:int)->bool:
+        if last_log_term > self.log[-1].term:
+            return True
+        elif last_log_term == self.log[-1].term and last_log_index >= len(self.log) - 1:
+            return True
+        return False
+
+
     # RPC methods
-    def RequestVote(self, request, context):
-        node = unquote(context.peer())
-        node_id = -1 # node # TODO: translate from node ip to id
-        if request.term > self.term:
-            self.step_down(request.term)
+    def RequestVote(self, request:raft_pb2.VoteRequest, context):
+        response:raft_pb2.VoteResponse = raft_pb2.VoteResponse()
 
-        self.last_log_term = -1 
-        self.last_log_idx = -1 
-
-        if request.term == self.term \
-            and (self.voted_for == node_id or self.voted_for == -1) \
-            and (request.last_log_term == self.last_log_term and request.last_log_idx >= self.last_log_idx):
-                self.voted_for = node_id
-                self.state = 'FOLLOWER'
-                self.set_election_timeout()
+        # if request.term < current_term, return false
+        if request.term < self.current_term:
+            response.term = self.current_term
+            response.vote_granted = False
+            return response
         
-        response = raft_pb2.VoteResponse()
-        response.term = self.term
-        response.vote_granted = True
+        # if voted_for is None or candidate_id, and candidate's log is at least as up-to-date as receiver's log, grant vote
+        if (self.voted_for is None or self.voted_for == request.candidate_id) and self.is_up_to_date(request.last_log_term, request.last_log_index):
+            self.voted_for = request.candidate_id
+            response.term = self.current_term
+            response.vote_granted = True
+            return response
+
+        response.term = self.current_term
+        response.vote_granted = False
         return response
 
-    def AppendEntries(self, request, context):
-        return super().AppendEntries(request, context)
+    def AppendEntries(self, request:raft_pb2.AppendEntriesRequest, context):
+        response:raft_pb2.AppendEntriesResponse = raft_pb2.AppendEntriesResponse()
 
-    def SendHeartbeat(self, request, context):
-        return super().SendHeartbeat(request, context)
+        if request.term < self.current_term:
+            response.term = self.current_term
+            response.success = False
+            return response
+
+        # if log doesn't contain an entry at prev_log_index whose term matches prev_log_term
+        if len(self.log) < request.prev_log_index or self.log[request.prev_log_index].term != request.prev_log_term:
+            response.term = self.current_term
+            response.success = False
+            return response
+
+        # if an existing entry conflicts with a new one (same index but different terms)
+        if len(self.log) > request.prev_log_index and self.log[request.prev_log_index].term != request.prev_log_term:
+            self.log = self.log[:request.prev_log_index]
+
+        # append any new entries not already in the log
+        self.log.extend(request.entries)
+
+        # if leader_commit > commit_index, set commit_index = min(leader_commit, index of last new entry)
+        if request.leader_commit_idx > self.commit_index:
+            self.commit_index = min(request.leader_commit_idx, len(self.log) - 1)
+
+        response.term = self.current_term
+        response.success = True
+        return response
+
 
 class DatabaseServicer(raft_pb2_grpc.DatabaseServicer):
     def __init__(self):
