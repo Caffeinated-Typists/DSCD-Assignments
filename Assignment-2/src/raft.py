@@ -38,6 +38,75 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # leader id
         self.leader_id = None
   
+    def leader_loop(self):
+        # send AppendEntries RPCs to all peers
+        # may have to be rewritten to be done in parallel
+        for id, peer in enumerate(NODES):
+            if id == ID:
+                continue
+            request:raft_pb2.AppendEntriesRequest = raft_pb2.AppendEntriesRequest()
+            request.term = self.current_term
+            request.leader_id = ID
+            request.prev_log_index = len(self.log) - 1
+            request.prev_log_term = self.log[-1].term
+            request.leader_commit_idx = self.commit_index
+            request.entries.extend(self.log[self.next_index[peer]:])
+            response = stubs[peer].AppendEntries(request)
+            if response.success:
+                self.next_index[peer] = len(self.log)
+                self.match_index[peer] = len(self.log) - 1
+            else:
+                pass
+
+        # if there exists an N such that N > commit_index, a majority of match_index[i] >= N, and log[N].term == current_term, set commit_index = N
+        for i in range(len(self.log) - 1, self.commit_index, -1):
+            if self.log[i].term == self.current_term:
+                count = 0
+                for peer in NODES:
+                    if self.match_index[peer] >= i:
+                        count += 1
+                if count > len(NODES) // 2:
+                    self.commit_index = i
+                    break
+        
+    def follower_loop(self):
+        # maintain a timer for election timeout
+        election_timeout = randint(150, 300)
+        start_time = time()
+        while time() - start_time < election_timeout:
+            pass
+
+        # convert to candidate
+        self.current_term += 1
+        self.voted_for = ID
+        votes = 1
+        request:raft_pb2.VoteRequest = raft_pb2.VoteRequest()
+        request.term = self.current_term
+        request.candidate_id = ID
+        request.last_log_index = len(self.log) - 1
+        request.last_log_term = self.log[-1].term
+        for id, peer in enumerate(NODES):
+            if id == ID:
+                continue
+            response = stubs[peer].RequestVote(request)
+            if response.vote_granted:
+                votes += 1
+            if votes > len(NODES) // 2:
+                self.leader_id = ID
+                return
+        
+    
+
+    def main_loop(self):
+        while True:
+            if self.leader_id == ID:
+                self.leader_loop()
+            else:
+                self.follower_loop()
+
+    def run(self):
+        threading.Thread(target=self.main_loop).start()
+
 
     def is_up_to_date(self, last_log_term:int, last_log_index:int)->bool:
         if last_log_term > self.log[-1].term:
