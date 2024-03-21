@@ -14,11 +14,6 @@ class RaftStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.SendHeartbeat = channel.unary_unary(
-                '/Raft/SendHeartbeat',
-                request_serializer=raft__pb2.Heartbeat.SerializeToString,
-                response_deserializer=raft__pb2.Response.FromString,
-                )
         self.AppendEntries = channel.unary_unary(
                 '/Raft/AppendEntries',
                 request_serializer=raft__pb2.AppendEntriesRequest.SerializeToString,
@@ -33,12 +28,6 @@ class RaftStub(object):
 
 class RaftServicer(object):
     """Missing associated documentation comment in .proto file."""
-
-    def SendHeartbeat(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
 
     def AppendEntries(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -55,11 +44,6 @@ class RaftServicer(object):
 
 def add_RaftServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'SendHeartbeat': grpc.unary_unary_rpc_method_handler(
-                    servicer.SendHeartbeat,
-                    request_deserializer=raft__pb2.Heartbeat.FromString,
-                    response_serializer=raft__pb2.Response.SerializeToString,
-            ),
             'AppendEntries': grpc.unary_unary_rpc_method_handler(
                     servicer.AppendEntries,
                     request_deserializer=raft__pb2.AppendEntriesRequest.FromString,
@@ -79,23 +63,6 @@ def add_RaftServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class Raft(object):
     """Missing associated documentation comment in .proto file."""
-
-    @staticmethod
-    def SendHeartbeat(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/Raft/SendHeartbeat',
-            raft__pb2.Heartbeat.SerializeToString,
-            raft__pb2.Response.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
     @staticmethod
     def AppendEntries(request,

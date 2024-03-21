@@ -1,4 +1,5 @@
 from google.protobuf.internal import containers as _containers
+from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
@@ -42,8 +43,8 @@ class AppendEntriesRequest(_message.Message):
     prev_log_idx: int
     prev_log_term: int
     leader_commit_idx: int
-    data: Log
-    def __init__(self, term: _Optional[int] = ..., leader_id: _Optional[int] = ..., prev_log_idx: _Optional[int] = ..., prev_log_term: _Optional[int] = ..., leader_commit_idx: _Optional[int] = ..., data: _Optional[_Union[Log, _Mapping]] = ...) -> None: ...
+    data: _containers.RepeatedCompositeFieldContainer[Log]
+    def __init__(self, term: _Optional[int] = ..., leader_id: _Optional[int] = ..., prev_log_idx: _Optional[int] = ..., prev_log_term: _Optional[int] = ..., leader_commit_idx: _Optional[int] = ..., data: _Optional[_Iterable[_Union[Log, _Mapping]]] = ...) -> None: ...
 
 class AppendEntriesResponse(_message.Message):
     __slots__ = ("term", "success")
@@ -52,14 +53,6 @@ class AppendEntriesResponse(_message.Message):
     term: int
     success: bool
     def __init__(self, term: _Optional[int] = ..., success: bool = ...) -> None: ...
-
-class Heartbeat(_message.Message):
-    __slots__ = ("term", "lease_time")
-    TERM_FIELD_NUMBER: _ClassVar[int]
-    LEASE_TIME_FIELD_NUMBER: _ClassVar[int]
-    term: int
-    lease_time: int
-    def __init__(self, term: _Optional[int] = ..., lease_time: _Optional[int] = ...) -> None: ...
 
 class InstallSnapshot(_message.Message):
     __slots__ = ("term", "leader_id", "last_incl_idx", "last_incl_term", "offset", "data", "done")
@@ -80,12 +73,20 @@ class InstallSnapshot(_message.Message):
     def __init__(self, term: _Optional[int] = ..., leader_id: _Optional[int] = ..., last_incl_idx: _Optional[int] = ..., last_incl_term: _Optional[int] = ..., offset: _Optional[int] = ..., data: _Optional[_Iterable[_Union[Log, _Mapping]]] = ..., done: bool = ...) -> None: ...
 
 class Log(_message.Message):
-    __slots__ = ("key", "value")
+    __slots__ = ("cmd", "key", "value")
+    class action(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+        __slots__ = ()
+        GET: _ClassVar[Log.action]
+        SET: _ClassVar[Log.action]
+    GET: Log.action
+    SET: Log.action
+    CMD_FIELD_NUMBER: _ClassVar[int]
     KEY_FIELD_NUMBER: _ClassVar[int]
     VALUE_FIELD_NUMBER: _ClassVar[int]
-    key: int
-    value: int
-    def __init__(self, key: _Optional[int] = ..., value: _Optional[int] = ...) -> None: ...
+    cmd: Log.action
+    key: str
+    value: str
+    def __init__(self, cmd: _Optional[_Union[Log.action, str]] = ..., key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
 
 class VoteRequest(_message.Message):
     __slots__ = ("term", "candidate_id", "last_log_idx", "last_log_term")
