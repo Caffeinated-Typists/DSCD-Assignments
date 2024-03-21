@@ -6,7 +6,6 @@ from random import randint
 from time import time
 from time import sleep
 import threading
-from urllib.parse import unquote
 
 import raft_pb2
 import raft_pb2_grpc
@@ -41,6 +40,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # heatbeat timer
         self.election_timeout = randint(5, 10)
         self.curr_timeout = time()
+
+        self.votes = 0
   
     def leader_loop(self):
         # send AppendEntries RPCs to all peers
@@ -56,12 +57,18 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             request.prev_log_term = self.log[-1].term
             request.leader_commit_idx = self.commit_index
             request.entries.extend(self.log[self.next_index.get(peer, 0):])
-            response = stubs[peer].AppendEntries(request)
-            if response.success:
-                self.next_index[peer] = len(self.log)
-                self.match_index[peer] = len(self.log) - 1
-            else:
+            try:
+                response = stubs[peer].AppendEntries(request, timeout=0.15)
+                if response.success:
+                    self.next_index[peer] = len(self.log)
+                    self.match_index[peer] = len(self.log) - 1
+                else:
+                    pass
+            except grpc._channel._InactiveRpcError:
                 pass
+            except Exception as e:
+                raise e
+            
 
         # if there exists an N such that N > commit_index, a majority of match_index[i] >= N, and log[N].term == current_term, set commit_index = N
         for i in range(len(self.log) - 1, self.commit_index, -1):
@@ -80,29 +87,53 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # maintain a timer for election timeout
         while (time() - self.curr_timeout) < self.election_timeout:
             pass
+        
+        vote_cond = threading.Condition()
+
+        def subroutine(request, peer):
+            try:
+                response = stubs[peer].RequestVote(request, timeout=0.15)
+                if response.vote_granted:
+                    with vote_cond:
+                        self.votes += 1
+                        if self.votes > len(NODES) // 2:
+                            self.leader_id = ID
+                            vote_cond.notify_all()
+            except grpc._channel._InactiveRpcError:
+                pass
+            except Exception as e:
+                raise e
+
 
         # convert to candidate
         print(f"Node {ID} converting to candidate")
         self.current_term += 1
         self.voted_for = ID
-        votes = 1
+        self.votes = 1
         request:raft_pb2.VoteRequest = raft_pb2.VoteRequest()
         request.term = self.current_term
         request.candidate_id = ID
         request.last_log_idx = len(self.log) - 1
         request.last_log_term = self.log[-1].term
+        thrds:list[threading.Thread] = []
         for id, peer in enumerate(NODES):
             if id == ID:
                 continue
             print(f"Sending RequestVote to {peer}")
-            response = stubs[peer].RequestVote(request)
-            if response.vote_granted:
-                votes += 1
-            if votes > len(NODES) // 2:
-                self.leader_id = ID
-                return
-        
-    
+            thrds.append(threading.Thread(target=subroutine, args=(request, peer)))    
+
+        for t in thrds:
+            t.start()
+
+        with vote_cond:
+            while self.votes <= len(NODES) // 2:
+                vote_cond.wait()
+
+        # stop all threads
+        for t in thrds:
+            t.join()
+                
+
 
     def main_loop(self):
         while True:
@@ -120,42 +151,45 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             return True
         elif last_log_term == self.log[-1].term and last_log_index >= len(self.log) - 1:
             return True
-        return False
+        return True
 
 
     # RPC methods
     def RequestVote(self, request:raft_pb2.VoteRequest, context):
-        print(f"Received RequestVote from {request.candidate_id}")
         response:raft_pb2.VoteResponse = raft_pb2.VoteResponse()
 
         # if request.term < current_term, return false
-        if request.term < self.current_term:
+        if (request.term < self.current_term):
+            print(f"Received RequestVote from {request.candidate_id} : Sent False, request.term < current_term")  
             response.term = self.current_term
             response.vote_granted = False
             return response
         
         # if voted_for is None or candidate_id, and candidate's log is at least as up-to-date as receiver's log, grant vote
-        if (self.voted_for is None or self.voted_for == request.candidate_id) and self.is_up_to_date(request.last_log_term, request.last_log_idx):
-            self.voted_for = request.candidate_id
-            response.term = self.current_term
-            response.vote_granted = True
-            return response
+        if self.is_up_to_date(request.last_log_term, request.last_log_idx):
+            if request.term > self.current_term or self.voted_for is None or self.voted_for == request.candidate_id:
+                print(f"Received RequestVote from {request.candidate_id} : Sent True")
+                response.term = self.current_term
+                response.vote_granted = True
+                return response
 
+        print(f"Received RequestVote from {request.candidate_id} : Sent False, voted_for is not None or candidate_id, and candidate's log is not at least as up-to-date as receiver's log")
         response.term = self.current_term
         response.vote_granted = False
         return response
 
     def AppendEntries(self, request:raft_pb2.AppendEntriesRequest, context):
-        print(f"Received AppendEntries from {request.leader_id}")
         response:raft_pb2.AppendEntriesResponse = raft_pb2.AppendEntriesResponse()
 
         if request.term < self.current_term:
+            print(f"Received AppendEntries from {request.leader_id}: Sent False")
             response.term = self.current_term
             response.success = False
             return response
 
         # if log doesn't contain an entry at prev_log_idx whose term matches prev_log_term
         if len(self.log) < request.prev_log_idx or self.log[request.prev_log_idx].term != request.prev_log_term:
+            print(f"Received AppendEntries from {request.leader_id}: Sent False, log doesn't contain an entry at prev_log_idx whose term matches prev_log_term")
             response.term = self.current_term
             response.success = False
             return response
@@ -175,6 +209,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         if request.leader_commit_idx > self.commit_index:
             self.commit_index = min(request.leader_commit_idx, len(self.log) - 1)
 
+        print(f"Received AppendEntries from {request.leader_id}: Sent True")
         response.term = self.current_term
         response.success = True
         return response
