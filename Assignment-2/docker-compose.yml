@@ -1,8 +1,11 @@
 version: '3'
 
 services:
-  node-1:
+  node-0:
     build: .
+    entrypoint: python /src/raft.py
+    environment:
+      - ID=0
     networks:
       default:
         ipv4_address: 10.0.1.1
@@ -10,32 +13,44 @@ services:
       # - "4444:4444"    
     
   
-  node-2:
+  node-1:
     build: .
+    entrypoint: python /src/raft.py
+    environment:
+      - ID=1
     networks:
       default:
         ipv4_address: 10.0.1.2
     # ports:
       # - "4444:4444"
 
-  node-3:
+  node-2:
     build: .
+    entrypoint: python /src/raft.py
+    environment:
+      - ID=2
     networks:
       default:
         ipv4_address: 10.0.1.3
     # ports:
       # - "4444:4444"
 
-  node-4:
+  node-3:
     build: .
+    entrypoint: python /src/raft.py
+    environment:
+      - ID=3
     networks:
       default:
         ipv4_address: 10.0.1.4
     # ports:
       # - "4444:4444"
 
-  node-5:
+  node-4:
     build: .
+    entrypoint: python /src/raft.py
+    environment:
+      - ID=4
     networks:
       default:
         ipv4_address: 10.0.1.5
