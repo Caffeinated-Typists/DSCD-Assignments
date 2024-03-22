@@ -51,7 +51,7 @@ message InstallSnapshotResponse {
 
 message Log {
     enum action {
-        GET = 0;
+        NOOP = 0;
         SET = 1;
     } 
     action cmd = 1; // command type

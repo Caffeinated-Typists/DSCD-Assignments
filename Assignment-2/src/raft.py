@@ -227,28 +227,37 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 class Database:
     def __init__(self):
         self.data:dict = dict()
+        self.logs:list[raft_pb2.Log] = [raft_pb2.Log()]
         try:
-            with open("db.json", "r") as f:
-                self.data = json.load(f)
+            with open("logs.txt", "r") as f:
+                self.logs = json.loads(f.read())
+            for log in self.logs:
+                if log.cmd is raft_pb2.Log.SET:
+                    self.set(log.key, log.value)
         except FileNotFoundError:
-            self.data = dict()
+            pass
         except Exception as e:
             raise e
 
     def __str__(self):
         return f"data: {self.data}"
     
+    def handle_incoming_log(self, log:raft_pb2.Log)->bool:
+        self.logs.append(log)
+        if log.cmd is raft_pb2.Log.SET:
+            self.set(log.key, log.value)
+        self.dump_data()
+    
     def get(self, key)->str:
         return self.data.get(key, None)
     
-    def set(self, key:str, value:str) -> bool:
-        self.data[key] = value
-        self.dump_data()
+    def set(self, key:str, val:str) -> bool:
+        self.data[key] = val
         return True
     
     def dump_data(self)->None:
-        with open("db.json", "w") as f:
-            json.dump(self.data, f)
+        with open("logs.txt", "w") as f:
+            f.write(json.dumps(self.logs))
 
 
 class DatabaseServicer(raft_pb2_grpc.DatabaseServicer):
