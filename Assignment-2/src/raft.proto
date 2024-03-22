@@ -4,20 +4,17 @@ service Raft {
     rpc AppendEntries (AppendEntriesRequest) returns (AppendEntriesResponse) {}
     rpc RequestVote (VoteRequest) returns (VoteResponse) {}
     rpc InstallSnapshot (InstallSnapshotRequest) returns (InstallSnapshotResponse) {}
+    rpc RequestData (DataRequest) returns (DataResponse) {}
 }
 
-service Database {
-    rpc RequestData (DbRequest) returns (DbResponse) {}
+message DataRequest {
+    Log data = 1;
 }
 
-message DbRequest {
-    int32 type = 1;
-    Log data = 2;
-}
-
-message DbResponse {
-    int32 status = 1;
-    Log data = 2;
+message DataResponse {
+    bool status = 1;
+    int32 leader_id = 2;
+    Log data = 3;
 }
 
 message AppendEntriesRequest {
@@ -53,6 +50,7 @@ message Log {
     enum action {
         NOOP = 0;
         SET = 1;
+        GET = 2;
     } 
     action cmd = 1; // command type
     string key = 2; // key for get/set

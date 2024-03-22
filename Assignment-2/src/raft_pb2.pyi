@@ -6,21 +6,21 @@ from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Map
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
-class DbRequest(_message.Message):
-    __slots__ = ("type", "data")
-    TYPE_FIELD_NUMBER: _ClassVar[int]
+class DataRequest(_message.Message):
+    __slots__ = ("data",)
     DATA_FIELD_NUMBER: _ClassVar[int]
-    type: int
     data: Log
-    def __init__(self, type: _Optional[int] = ..., data: _Optional[_Union[Log, _Mapping]] = ...) -> None: ...
+    def __init__(self, data: _Optional[_Union[Log, _Mapping]] = ...) -> None: ...
 
-class DbResponse(_message.Message):
-    __slots__ = ("status", "data")
+class DataResponse(_message.Message):
+    __slots__ = ("status", "leader_id", "data")
     STATUS_FIELD_NUMBER: _ClassVar[int]
+    LEADER_ID_FIELD_NUMBER: _ClassVar[int]
     DATA_FIELD_NUMBER: _ClassVar[int]
-    status: int
+    status: bool
+    leader_id: int
     data: Log
-    def __init__(self, status: _Optional[int] = ..., data: _Optional[_Union[Log, _Mapping]] = ...) -> None: ...
+    def __init__(self, status: bool = ..., leader_id: _Optional[int] = ..., data: _Optional[_Union[Log, _Mapping]] = ...) -> None: ...
 
 class AppendEntriesRequest(_message.Message):
     __slots__ = ("term", "leader_id", "prev_log_idx", "prev_log_term", "leader_commit_idx", "leader_lease", "entries")
@@ -76,10 +76,12 @@ class Log(_message.Message):
     __slots__ = ("cmd", "key", "value", "term")
     class action(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
         __slots__ = ()
-        GET: _ClassVar[Log.action]
+        NOOP: _ClassVar[Log.action]
         SET: _ClassVar[Log.action]
-    GET: Log.action
+        GET: _ClassVar[Log.action]
+    NOOP: Log.action
     SET: Log.action
+    GET: Log.action
     CMD_FIELD_NUMBER: _ClassVar[int]
     KEY_FIELD_NUMBER: _ClassVar[int]
     VALUE_FIELD_NUMBER: _ClassVar[int]

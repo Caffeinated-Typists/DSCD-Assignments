@@ -13,13 +13,48 @@ import raft_pb2_grpc
 ID = int(os.environ["ID"])
 NODES = os.environ["NODES"].split(',')
 RAFT_PORT = os.environ["RAFT_PORT"]
-DB_PORT = os.environ["DB_PORT"]
 
-RPC_TIMEOUT:int = 0.15 # seconds
+RPC_TIMEOUT:float = 0.15 # seconds
 ELECTION_TIMEOUT_MIN:int = 5
 ELECTION_TIMEOUT_MAX:int = 10
 
 stubs = dict()
+
+class Database:
+    def __init__(self):
+        self.data:dict = dict()
+        self.logs:list[raft_pb2.Log] = [raft_pb2.Log()]
+        try:
+            with open("logs.txt", "r") as f:
+                self.logs = json.loads(f.read())
+            for log in self.logs:
+                if log.cmd is raft_pb2.Log.SET:
+                    self.set(log.key, log.value)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            raise e
+
+    def __str__(self):
+        return f"data: {self.data}"
+    
+    def handle_incoming_log(self, log:raft_pb2.Log)->bool:
+        self.logs.append(log)
+        if log.cmd is raft_pb2.Log.SET:
+            self.set(log.key, log.value)
+        self.dump_data()
+        return True
+    
+    def get(self, key)->str:
+        return self.data.get(key, None)
+    
+    def set(self, key:str, val:str) -> bool:
+        self.data[key] = val
+        return True
+    
+    def dump_data(self)->None:
+        with open("logs.txt", "w") as f:
+            f.write(json.dumps(self.logs))
 
 class RaftServicer(raft_pb2_grpc.RaftServicer):
 
@@ -46,6 +81,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         self.curr_timeout = time()
 
         self.votes = 0
+
+        self.db = Database()
   
     def leader_loop(self):
         # send AppendEntries RPCs to all peers
@@ -75,16 +112,16 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             except Exception as e:
                 raise e
             
-        if nodes_updated <= len(NODES) // 2:
-            self.leader_id = None
-            return
+        # if nodes_updated <= len(NODES) // 2:
+        #     self.leader_id = None
+        #     return
 
         # if there exists an N such that N > commit_index, a majority of match_index[i] >= N, and log[N].term == current_term, set commit_index = N
         for i in range(len(self.log) - 1, self.commit_index, -1):
             if self.log[i].term == self.current_term:
                 count = 0
                 for peer in NODES:
-                    if self.match_index[peer] >= i:
+                    if self.match_index.get(peer, -1) >= i:
                         count += 1
                 if count > len(NODES) // 2:
                     self.commit_index = i
@@ -224,54 +261,43 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         response.success = True
         return response
 
-class Database:
-    def __init__(self):
-        self.data:dict = dict()
-        self.logs:list[raft_pb2.Log] = [raft_pb2.Log()]
-        try:
-            with open("logs.txt", "r") as f:
-                self.logs = json.loads(f.read())
-            for log in self.logs:
-                if log.cmd is raft_pb2.Log.SET:
-                    self.set(log.key, log.value)
-        except FileNotFoundError:
-            pass
-        except Exception as e:
-            raise e
 
-    def __str__(self):
-        return f"data: {self.data}"
-    
-    def handle_incoming_log(self, log:raft_pb2.Log)->bool:
-        self.logs.append(log)
-        if log.cmd is raft_pb2.Log.SET:
-            self.set(log.key, log.value)
-        self.dump_data()
-    
-    def get(self, key)->str:
-        return self.data.get(key, None)
-    
-    def set(self, key:str, val:str) -> bool:
-        self.data[key] = val
-        return True
-    
-    def dump_data(self)->None:
-        with open("logs.txt", "w") as f:
-            f.write(json.dumps(self.logs))
-
-
-class DatabaseServicer(raft_pb2_grpc.DatabaseServicer):
     def RequestData(self, request, context):
-        return super().RequestData(request, context)
+        print(f"Received RequestData from {context.peer()}")
+        print(f"Current leader is {self.leader_id} and ID is {ID}")
+        response = raft_pb2.DataResponse()
+        if self.leader_id == None:
+            response.status = False
+            response.leader_id = -1
+            return response
+
+        if self.leader_id != ID:
+            response.status = False
+            response.leader_id = self.leader_id
+            return response
+        
+        if self.leader_id == ID:
+            if request.data.cmd == raft_pb2.Log.GET:
+                response.status = True
+                response.data.key = response.data.key
+                response.data.value = self.db.get(request.data.key)
+            elif request.data.cmd == raft_pb2.Log.SET:
+                log = raft_pb2.Log()
+                log.cmd = raft_pb2.Log.SET
+                log.key = request.data.key
+                log.value = request.data.value
+                log.term = self.current_term
+                self.log.append(log)
+                response.status = True
+            
+        return response
+
 
 if __name__ == "__main__":
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     raft_servicer = RaftServicer()
-    db_servicer = DatabaseServicer()
     raft_pb2_grpc.add_RaftServicer_to_server(raft_servicer, server)
-    raft_pb2_grpc.add_DatabaseServicer_to_server(db_servicer, server)
     server.add_insecure_port(f"[::]:{RAFT_PORT}")
-    server.add_insecure_port(f"[::]:{DB_PORT}")
     try:
         server.start()
         sleep(1) # wait for server to start

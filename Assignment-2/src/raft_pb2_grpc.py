@@ -29,6 +29,11 @@ class RaftStub(object):
                 request_serializer=raft__pb2.InstallSnapshotRequest.SerializeToString,
                 response_deserializer=raft__pb2.InstallSnapshotResponse.FromString,
                 )
+        self.RequestData = channel.unary_unary(
+                '/Raft/RequestData',
+                request_serializer=raft__pb2.DataRequest.SerializeToString,
+                response_deserializer=raft__pb2.DataResponse.FromString,
+                )
 
 
 class RaftServicer(object):
@@ -52,6 +57,12 @@ class RaftServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RequestData(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_RaftServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -69,6 +80,11 @@ def add_RaftServicer_to_server(servicer, server):
                     servicer.InstallSnapshot,
                     request_deserializer=raft__pb2.InstallSnapshotRequest.FromString,
                     response_serializer=raft__pb2.InstallSnapshotResponse.SerializeToString,
+            ),
+            'RequestData': grpc.unary_unary_rpc_method_handler(
+                    servicer.RequestData,
+                    request_deserializer=raft__pb2.DataRequest.FromString,
+                    response_serializer=raft__pb2.DataResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -131,50 +147,6 @@ class Raft(object):
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
-
-class DatabaseStub(object):
-    """Missing associated documentation comment in .proto file."""
-
-    def __init__(self, channel):
-        """Constructor.
-
-        Args:
-            channel: A grpc.Channel.
-        """
-        self.RequestData = channel.unary_unary(
-                '/Database/RequestData',
-                request_serializer=raft__pb2.DbRequest.SerializeToString,
-                response_deserializer=raft__pb2.DbResponse.FromString,
-                )
-
-
-class DatabaseServicer(object):
-    """Missing associated documentation comment in .proto file."""
-
-    def RequestData(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-
-def add_DatabaseServicer_to_server(servicer, server):
-    rpc_method_handlers = {
-            'RequestData': grpc.unary_unary_rpc_method_handler(
-                    servicer.RequestData,
-                    request_deserializer=raft__pb2.DbRequest.FromString,
-                    response_serializer=raft__pb2.DbResponse.SerializeToString,
-            ),
-    }
-    generic_handler = grpc.method_handlers_generic_handler(
-            'Database', rpc_method_handlers)
-    server.add_generic_rpc_handlers((generic_handler,))
-
-
- # This class is part of an EXPERIMENTAL API.
-class Database(object):
-    """Missing associated documentation comment in .proto file."""
-
     @staticmethod
     def RequestData(request,
             target,
@@ -186,8 +158,8 @@ class Database(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/Database/RequestData',
-            raft__pb2.DbRequest.SerializeToString,
-            raft__pb2.DbResponse.FromString,
+        return grpc.experimental.unary_unary(request, target, '/Raft/RequestData',
+            raft__pb2.DataRequest.SerializeToString,
+            raft__pb2.DataResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

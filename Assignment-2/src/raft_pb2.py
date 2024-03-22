@@ -14,35 +14,33 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nraft.proto\"-\n\tDbRequest\x12\x0c\n\x04type\x18\x01 \x01(\x05\x12\x12\n\x04\x64\x61ta\x18\x02 \x01(\x0b\x32\x04.Log\"0\n\nDbResponse\x12\x0e\n\x06status\x18\x01 \x01(\x05\x12\x12\n\x04\x64\x61ta\x18\x02 \x01(\x0b\x32\x04.Log\"\xac\x01\n\x14\x41ppendEntriesRequest\x12\x0c\n\x04term\x18\x01 \x01(\x05\x12\x11\n\tleader_id\x18\x02 \x01(\x05\x12\x14\n\x0cprev_log_idx\x18\x03 \x01(\x05\x12\x15\n\rprev_log_term\x18\x04 \x01(\x05\x12\x19\n\x11leader_commit_idx\x18\x05 \x01(\x05\x12\x14\n\x0cleader_lease\x18\x06 \x01(\x05\x12\x15\n\x07\x65ntries\x18\x07 \x03(\x0b\x32\x04.Log\"6\n\x15\x41ppendEntriesResponse\x12\x0c\n\x04term\x18\x01 \x01(\x05\x12\x0f\n\x07success\x18\x02 \x01(\x08\"\x9a\x01\n\x16InstallSnapshotRequest\x12\x0c\n\x04term\x18\x01 \x01(\x05\x12\x11\n\tleader_id\x18\x02 \x01(\x05\x12\x15\n\rlast_incl_idx\x18\x03 \x01(\x05\x12\x16\n\x0elast_incl_term\x18\x04 \x01(\x05\x12\x0e\n\x06offset\x18\x05 \x01(\x05\x12\x12\n\x04\x64\x61ta\x18\x06 \x03(\x0b\x32\x04.Log\x12\x0c\n\x04\x64one\x18\x07 \x01(\x08\"\'\n\x17InstallSnapshotResponse\x12\x0c\n\x04term\x18\x01 \x01(\x05\"e\n\x03Log\x12\x18\n\x03\x63md\x18\x01 \x01(\x0e\x32\x0b.Log.action\x12\x0b\n\x03key\x18\x02 \x01(\t\x12\r\n\x05value\x18\x03 \x01(\t\x12\x0c\n\x04term\x18\x04 \x01(\x05\"\x1a\n\x06\x61\x63tion\x12\x07\n\x03GET\x10\x00\x12\x07\n\x03SET\x10\x01\"^\n\x0bVoteRequest\x12\x0c\n\x04term\x18\x01 \x01(\x05\x12\x14\n\x0c\x63\x61ndidate_id\x18\x02 \x01(\x05\x12\x14\n\x0clast_log_idx\x18\x03 \x01(\x05\x12\x15\n\rlast_log_term\x18\x04 \x01(\x05\"2\n\x0cVoteResponse\x12\x0c\n\x04term\x18\x01 \x01(\x05\x12\x14\n\x0cvote_granted\x18\x02 \x01(\x08\x32\xbe\x01\n\x04Raft\x12@\n\rAppendEntries\x12\x15.AppendEntriesRequest\x1a\x16.AppendEntriesResponse\"\x00\x12,\n\x0bRequestVote\x12\x0c.VoteRequest\x1a\r.VoteResponse\"\x00\x12\x46\n\x0fInstallSnapshot\x12\x17.InstallSnapshotRequest\x1a\x18.InstallSnapshotResponse\"\x00\x32\x34\n\x08\x44\x61tabase\x12(\n\x0bRequestData\x12\n.DbRequest\x1a\x0b.DbResponse\"\x00\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nraft.proto\"!\n\x0b\x44\x61taRequest\x12\x12\n\x04\x64\x61ta\x18\x01 \x01(\x0b\x32\x04.Log\"E\n\x0c\x44\x61taResponse\x12\x0e\n\x06status\x18\x01 \x01(\x08\x12\x11\n\tleader_id\x18\x02 \x01(\x05\x12\x12\n\x04\x64\x61ta\x18\x03 \x01(\x0b\x32\x04.Log\"\xac\x01\n\x14\x41ppendEntriesRequest\x12\x0c\n\x04term\x18\x01 \x01(\x05\x12\x11\n\tleader_id\x18\x02 \x01(\x05\x12\x14\n\x0cprev_log_idx\x18\x03 \x01(\x05\x12\x15\n\rprev_log_term\x18\x04 \x01(\x05\x12\x19\n\x11leader_commit_idx\x18\x05 \x01(\x05\x12\x14\n\x0cleader_lease\x18\x06 \x01(\x05\x12\x15\n\x07\x65ntries\x18\x07 \x03(\x0b\x32\x04.Log\"6\n\x15\x41ppendEntriesResponse\x12\x0c\n\x04term\x18\x01 \x01(\x05\x12\x0f\n\x07success\x18\x02 \x01(\x08\"\x9a\x01\n\x16InstallSnapshotRequest\x12\x0c\n\x04term\x18\x01 \x01(\x05\x12\x11\n\tleader_id\x18\x02 \x01(\x05\x12\x15\n\rlast_incl_idx\x18\x03 \x01(\x05\x12\x16\n\x0elast_incl_term\x18\x04 \x01(\x05\x12\x0e\n\x06offset\x18\x05 \x01(\x05\x12\x12\n\x04\x64\x61ta\x18\x06 \x03(\x0b\x32\x04.Log\x12\x0c\n\x04\x64one\x18\x07 \x01(\x08\"\'\n\x17InstallSnapshotResponse\x12\x0c\n\x04term\x18\x01 \x01(\x05\"o\n\x03Log\x12\x18\n\x03\x63md\x18\x01 \x01(\x0e\x32\x0b.Log.action\x12\x0b\n\x03key\x18\x02 \x01(\t\x12\r\n\x05value\x18\x03 \x01(\t\x12\x0c\n\x04term\x18\x04 \x01(\x05\"$\n\x06\x61\x63tion\x12\x08\n\x04NOOP\x10\x00\x12\x07\n\x03SET\x10\x01\x12\x07\n\x03GET\x10\x02\"^\n\x0bVoteRequest\x12\x0c\n\x04term\x18\x01 \x01(\x05\x12\x14\n\x0c\x63\x61ndidate_id\x18\x02 \x01(\x05\x12\x14\n\x0clast_log_idx\x18\x03 \x01(\x05\x12\x15\n\rlast_log_term\x18\x04 \x01(\x05\"2\n\x0cVoteResponse\x12\x0c\n\x04term\x18\x01 \x01(\x05\x12\x14\n\x0cvote_granted\x18\x02 \x01(\x08\x32\xec\x01\n\x04Raft\x12@\n\rAppendEntries\x12\x15.AppendEntriesRequest\x1a\x16.AppendEntriesResponse\"\x00\x12,\n\x0bRequestVote\x12\x0c.VoteRequest\x1a\r.VoteResponse\"\x00\x12\x46\n\x0fInstallSnapshot\x12\x17.InstallSnapshotRequest\x1a\x18.InstallSnapshotResponse\"\x00\x12,\n\x0bRequestData\x12\x0c.DataRequest\x1a\r.DataResponse\"\x00\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'raft_pb2', _globals)
 if _descriptor._USE_C_DESCRIPTORS == False:
   DESCRIPTOR._options = None
-  _globals['_DBREQUEST']._serialized_start=14
-  _globals['_DBREQUEST']._serialized_end=59
-  _globals['_DBRESPONSE']._serialized_start=61
-  _globals['_DBRESPONSE']._serialized_end=109
-  _globals['_APPENDENTRIESREQUEST']._serialized_start=112
-  _globals['_APPENDENTRIESREQUEST']._serialized_end=284
-  _globals['_APPENDENTRIESRESPONSE']._serialized_start=286
-  _globals['_APPENDENTRIESRESPONSE']._serialized_end=340
-  _globals['_INSTALLSNAPSHOTREQUEST']._serialized_start=343
-  _globals['_INSTALLSNAPSHOTREQUEST']._serialized_end=497
-  _globals['_INSTALLSNAPSHOTRESPONSE']._serialized_start=499
-  _globals['_INSTALLSNAPSHOTRESPONSE']._serialized_end=538
-  _globals['_LOG']._serialized_start=540
-  _globals['_LOG']._serialized_end=641
-  _globals['_LOG_ACTION']._serialized_start=615
-  _globals['_LOG_ACTION']._serialized_end=641
-  _globals['_VOTEREQUEST']._serialized_start=643
-  _globals['_VOTEREQUEST']._serialized_end=737
-  _globals['_VOTERESPONSE']._serialized_start=739
-  _globals['_VOTERESPONSE']._serialized_end=789
-  _globals['_RAFT']._serialized_start=792
-  _globals['_RAFT']._serialized_end=982
-  _globals['_DATABASE']._serialized_start=984
-  _globals['_DATABASE']._serialized_end=1036
+  _globals['_DATAREQUEST']._serialized_start=14
+  _globals['_DATAREQUEST']._serialized_end=47
+  _globals['_DATARESPONSE']._serialized_start=49
+  _globals['_DATARESPONSE']._serialized_end=118
+  _globals['_APPENDENTRIESREQUEST']._serialized_start=121
+  _globals['_APPENDENTRIESREQUEST']._serialized_end=293
+  _globals['_APPENDENTRIESRESPONSE']._serialized_start=295
+  _globals['_APPENDENTRIESRESPONSE']._serialized_end=349
+  _globals['_INSTALLSNAPSHOTREQUEST']._serialized_start=352
+  _globals['_INSTALLSNAPSHOTREQUEST']._serialized_end=506
+  _globals['_INSTALLSNAPSHOTRESPONSE']._serialized_start=508
+  _globals['_INSTALLSNAPSHOTRESPONSE']._serialized_end=547
+  _globals['_LOG']._serialized_start=549
+  _globals['_LOG']._serialized_end=660
+  _globals['_LOG_ACTION']._serialized_start=624
+  _globals['_LOG_ACTION']._serialized_end=660
+  _globals['_VOTEREQUEST']._serialized_start=662
+  _globals['_VOTEREQUEST']._serialized_end=756
+  _globals['_VOTERESPONSE']._serialized_start=758
+  _globals['_VOTERESPONSE']._serialized_end=808
+  _globals['_RAFT']._serialized_start=811
+  _globals['_RAFT']._serialized_end=1047
 # @@protoc_insertion_point(module_scope)
