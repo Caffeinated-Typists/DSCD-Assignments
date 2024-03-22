@@ -23,20 +23,22 @@ class DbResponse(_message.Message):
     def __init__(self, status: _Optional[int] = ..., data: _Optional[_Union[Log, _Mapping]] = ...) -> None: ...
 
 class AppendEntriesRequest(_message.Message):
-    __slots__ = ("term", "leader_id", "prev_log_idx", "prev_log_term", "leader_commit_idx", "entries")
+    __slots__ = ("term", "leader_id", "prev_log_idx", "prev_log_term", "leader_commit_idx", "leader_lease", "entries")
     TERM_FIELD_NUMBER: _ClassVar[int]
     LEADER_ID_FIELD_NUMBER: _ClassVar[int]
     PREV_LOG_IDX_FIELD_NUMBER: _ClassVar[int]
     PREV_LOG_TERM_FIELD_NUMBER: _ClassVar[int]
     LEADER_COMMIT_IDX_FIELD_NUMBER: _ClassVar[int]
+    LEADER_LEASE_FIELD_NUMBER: _ClassVar[int]
     ENTRIES_FIELD_NUMBER: _ClassVar[int]
     term: int
     leader_id: int
     prev_log_idx: int
     prev_log_term: int
     leader_commit_idx: int
+    leader_lease: int
     entries: _containers.RepeatedCompositeFieldContainer[Log]
-    def __init__(self, term: _Optional[int] = ..., leader_id: _Optional[int] = ..., prev_log_idx: _Optional[int] = ..., prev_log_term: _Optional[int] = ..., leader_commit_idx: _Optional[int] = ..., entries: _Optional[_Iterable[_Union[Log, _Mapping]]] = ...) -> None: ...
+    def __init__(self, term: _Optional[int] = ..., leader_id: _Optional[int] = ..., prev_log_idx: _Optional[int] = ..., prev_log_term: _Optional[int] = ..., leader_commit_idx: _Optional[int] = ..., leader_lease: _Optional[int] = ..., entries: _Optional[_Iterable[_Union[Log, _Mapping]]] = ...) -> None: ...
 
 class AppendEntriesResponse(_message.Message):
     __slots__ = ("term", "success")

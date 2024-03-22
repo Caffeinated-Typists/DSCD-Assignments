@@ -15,6 +15,10 @@ NODES = os.environ["NODES"].split(',')
 RAFT_PORT = os.environ["RAFT_PORT"]
 DB_PORT = os.environ["DB_PORT"]
 
+RPC_TIMEOUT:int = 0.15 # seconds
+ELECTION_TIMEOUT_MIN:int = 5
+ELECTION_TIMEOUT_MAX:int = 10
+
 stubs = dict()
 
 class RaftServicer(raft_pb2_grpc.RaftServicer):
@@ -32,13 +36,13 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
         # leader specific volatile state, reinitialized after election
         self.next_index:dict = dict() # for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
-        self.match_index:dict = dict()
+        self.match_index:dict = dict() # for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
 
         # leader id
         self.leader_id = None
 
         # heatbeat timer
-        self.election_timeout = randint(5, 10)
+        self.election_timeout:int = randint(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)
         self.curr_timeout = time()
 
         self.votes = 0
@@ -46,6 +50,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
     def leader_loop(self):
         # send AppendEntries RPCs to all peers
         # may have to be rewritten to be done in parallel
+        nodes_updated = 1
         for id, peer in enumerate(NODES):
             if id == ID:
                 continue
@@ -58,10 +63,11 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             request.leader_commit_idx = self.commit_index
             request.entries.extend(self.log[self.next_index.get(peer, 0):])
             try:
-                response = stubs[peer].AppendEntries(request, timeout=0.15)
+                response = stubs[peer].AppendEntries(request, timeout=RPC_TIMEOUT)
                 if response.success:
                     self.next_index[peer] = len(self.log)
                     self.match_index[peer] = len(self.log) - 1
+                    nodes_updated += 1
                 else:
                     pass
             except grpc._channel._InactiveRpcError:
@@ -69,6 +75,9 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             except Exception as e:
                 raise e
             
+        if nodes_updated <= len(NODES) // 2:
+            self.leader_id = None
+            return
 
         # if there exists an N such that N > commit_index, a majority of match_index[i] >= N, and log[N].term == current_term, set commit_index = N
         for i in range(len(self.log) - 1, self.commit_index, -1):
@@ -92,7 +101,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
         def subroutine(request, peer):
             try:
-                response = stubs[peer].RequestVote(request, timeout=0.15)
+                response = stubs[peer].RequestVote(request, timeout=RPC_TIMEOUT)
                 if response.vote_granted:
                     with vote_cond:
                         self.votes += 1
@@ -108,6 +117,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # convert to candidate
         print(f"Node {ID} converting to candidate")
         self.current_term += 1
+        self.election_timeout = randint(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)
         self.voted_for = ID
         self.votes = 1
         request:raft_pb2.VoteRequest = raft_pb2.VoteRequest()
@@ -214,8 +224,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         response.success = True
         return response
 
-
-class DatabaseServicer(raft_pb2_grpc.DatabaseServicer):
+class Database:
     def __init__(self):
         self.data:dict = dict()
         try:
@@ -241,6 +250,8 @@ class DatabaseServicer(raft_pb2_grpc.DatabaseServicer):
         with open("db.json", "w") as f:
             json.dump(self.data, f)
 
+
+class DatabaseServicer(raft_pb2_grpc.DatabaseServicer):
     def RequestData(self, request, context):
         return super().RequestData(request, context)
 
@@ -254,7 +265,7 @@ if __name__ == "__main__":
     server.add_insecure_port(f"[::]:{DB_PORT}")
     try:
         server.start()
-        sleep(1)
+        sleep(1) # wait for server to start
         # create stubs for all peers
         for node in NODES:
             channel = grpc.insecure_channel(f"{node}:{RAFT_PORT}")
