@@ -46,7 +46,7 @@ class Database:
         return True
     
     def get(self, key)->str:
-        return self.data.get(key, None)
+        return self.data.get(key, "")
     
     def set(self, key:str, val:str) -> bool:
         self.data[key] = val
@@ -261,21 +261,15 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
     def RequestData(self, request, context):
         print(f"Received RequestData from {context.peer()}")
-        print(f"Current leader is {self.leader_id} and ID is {ID}")
         response = raft_pb2.DataResponse()
         if self.leader_id == None:
-            response.status = False
             response.leader_id = -1
             return response
 
-        if self.leader_id != ID:
-            response.status = False
-            response.leader_id = self.leader_id
-            return response
-        
+        response.leader_id = self.leader_id
         if self.leader_id == ID:
+            response.status = True
             if request.data.cmd == raft_pb2.Log.GET:
-                response.status = True
                 response.data.key = response.data.key
                 response.data.value = self.db.get(request.data.key)
             elif request.data.cmd == raft_pb2.Log.SET:
@@ -285,8 +279,6 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                 log.value = request.data.value
                 log.term = self.current_term
                 self.log.append(log)
-                response.status = True
-            
         return response
 
 
