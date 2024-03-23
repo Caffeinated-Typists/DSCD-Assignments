@@ -105,9 +105,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                     self.next_index[peer] = len(self.log)
                     self.match_index[peer] = len(self.log) - 1
                     nodes_updated += 1
-                else:
-                    pass
-            except grpc._channel._InactiveRpcError:
+            except grpc.RpcError:
                 pass
             except Exception as e:
                 raise e
@@ -132,7 +130,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
     def follower_loop(self):
         # maintain a timer for election timeout
         while (time() - self.curr_timeout) < self.election_timeout:
-            pass
+            sleep(1)
         
         vote_cond = threading.Condition()
 
@@ -145,7 +143,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                         if self.votes > len(NODES) // 2:
                             self.leader_id = ID
                             vote_cond.notify_all()
-            except grpc._channel._InactiveRpcError:
+            except grpc.RpcError:
                 pass
             except Exception as e:
                 raise e
@@ -176,11 +174,9 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             while self.votes <= len(NODES) // 2:
                 vote_cond.wait()
 
-        # stop all threads
         for t in thrds:
             t.join()
                 
-
 
     def main_loop(self):
         while True:
@@ -191,7 +187,6 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
     def run(self):
         threading.Thread(target=self.main_loop).start()
-
 
     def is_up_to_date(self, last_log_term:int, last_log_index:int)->bool:
         if last_log_term > self.log[-1].term:
@@ -218,6 +213,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                 print(f"Received RequestVote from {request.candidate_id} : Sent True")
                 response.term = self.current_term
                 response.vote_granted = True
+                self.voted_for = request.candidate_id
                 return response
 
         print(f"Received RequestVote from {request.candidate_id} : Sent False, voted_for is not None or candidate_id, and candidate's log is not at least as up-to-date as receiver's log")
@@ -259,6 +255,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         print(f"Received AppendEntries from {request.leader_id}: Sent True")
         response.term = self.current_term
         response.success = True
+        self.leader_id = request.leader_id
         return response
 
 
