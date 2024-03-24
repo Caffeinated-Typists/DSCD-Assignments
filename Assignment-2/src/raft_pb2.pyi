@@ -36,9 +36,9 @@ class AppendEntriesRequest(_message.Message):
     prev_log_idx: int
     prev_log_term: int
     leader_commit_idx: int
-    leader_lease: int
+    leader_lease: Lease
     entries: _containers.RepeatedCompositeFieldContainer[Log]
-    def __init__(self, term: _Optional[int] = ..., leader_id: _Optional[int] = ..., prev_log_idx: _Optional[int] = ..., prev_log_term: _Optional[int] = ..., leader_commit_idx: _Optional[int] = ..., leader_lease: _Optional[int] = ..., entries: _Optional[_Iterable[_Union[Log, _Mapping]]] = ...) -> None: ...
+    def __init__(self, term: _Optional[int] = ..., leader_id: _Optional[int] = ..., prev_log_idx: _Optional[int] = ..., prev_log_term: _Optional[int] = ..., leader_commit_idx: _Optional[int] = ..., leader_lease: _Optional[_Union[Lease, _Mapping]] = ..., entries: _Optional[_Iterable[_Union[Log, _Mapping]]] = ...) -> None: ...
 
 class AppendEntriesResponse(_message.Message):
     __slots__ = ("term", "success")
@@ -91,6 +91,14 @@ class Log(_message.Message):
     value: str
     term: int
     def __init__(self, cmd: _Optional[_Union[Log.action, str]] = ..., key: _Optional[str] = ..., value: _Optional[str] = ..., term: _Optional[int] = ...) -> None: ...
+
+class Lease(_message.Message):
+    __slots__ = ("leader_id", "time")
+    LEADER_ID_FIELD_NUMBER: _ClassVar[int]
+    TIME_FIELD_NUMBER: _ClassVar[int]
+    leader_id: int
+    time: float
+    def __init__(self, leader_id: _Optional[int] = ..., time: _Optional[float] = ...) -> None: ...
 
 class VoteRequest(_message.Message):
     __slots__ = ("term", "candidate_id", "last_log_idx", "last_log_term")

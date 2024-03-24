@@ -17,6 +17,8 @@ RAFT_PORT = os.environ["RAFT_PORT"]
 RPC_TIMEOUT:float = 0.15 # seconds
 ELECTION_TIMEOUT_MIN:int = 5
 ELECTION_TIMEOUT_MAX:int = 10
+HEARTBEAT_PERIOD:int = 1
+LEASE_TIMEOUT:int = 7
 
 stubs = dict()
 
@@ -68,6 +70,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # volatile state on all servers 
         self.commit_index:int = 0 # index of highest log entry known to be committed (initialized to 0, increases monotonically)
         self.last_applied:int = 0 # index of highest log entry applied to state machine (initialized to 0, increases monotonically)
+        self.leader_lease = raft_pb2.Lease(leader_id=-1)
 
         # leader specific volatile state, reinitialized after election
         self.next_index:dict = dict() # for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
@@ -88,16 +91,23 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # send AppendEntries RPCs to all peers
         # may have to be rewritten to be done in parallel
         nodes_updated = 1
+        request:raft_pb2.AppendEntriesRequest = raft_pb2.AppendEntriesRequest()
+        request.term = self.current_term
+        request.leader_id = ID
+        request.prev_log_idx = len(self.log) - 1
+        request.prev_log_term = self.log[-1].term
+        request.leader_commit_idx = self.commit_index
+        if (time() - self.leader_lease.time) < LEASE_TIMEOUT and self.leader_lease.leader_id != ID:
+            request.leader_lease.leader_id = -1 
+        else:
+            request.leader_lease.leader_id = ID
+            request.leader_lease.time = time()
+            self.leader_lease.CopyFrom(request.leader_lease)
         for id, peer in enumerate(NODES):
             if id == ID:
                 continue
             print(f"Sending AppendEntries to {peer}")
-            request:raft_pb2.AppendEntriesRequest = raft_pb2.AppendEntriesRequest()
-            request.term = self.current_term
-            request.leader_id = ID
-            request.prev_log_idx = len(self.log) - 1
-            request.prev_log_term = self.log[-1].term
-            request.leader_commit_idx = self.commit_index
+            request.ClearField("entries")
             request.entries.extend(self.log[self.next_index.get(peer, 1):])
             try:
                 response = stubs[peer].AppendEntries(request, timeout=RPC_TIMEOUT)
@@ -129,12 +139,12 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             self.db.handle_incoming_log(self.log[i])
         self.last_applied = self.commit_index
 
-        sleep(1)
+        sleep(HEARTBEAT_PERIOD)
         
     def follower_loop(self):
         # maintain a timer for election timeout
         while (time() - self.curr_timeout) < self.election_timeout:
-            sleep(1)
+            sleep(0.5 * HEARTBEAT_PERIOD)
         
         vote_cond = threading.Condition()
 
@@ -180,6 +190,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
         for t in thrds:
             t.join()
+
+        # after the candidate is elected, check leader_lease
                 
 
     def main_loop(self):
@@ -251,7 +263,6 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
         # append any new entries not already in the log
         self.log.extend(request.entries)
-        print(self.log)
 
         # if leader_commit > commit_index, set commit_index = min(leader_commit, index of last new entry)
         if request.leader_commit_idx > self.commit_index:
@@ -261,6 +272,9 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         response.term = self.current_term
         response.success = True
         self.leader_id = request.leader_id
+        if (request.leader_lease.leader_id != -1):
+            self.leader_lease.CopyFrom(request.leader_lease)
+        print(self.leader_lease)
         return response
 
 
@@ -273,11 +287,16 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
         response.leader_id = self.leader_id
         if self.leader_id == ID:
-            response.status = True
             if request.data.cmd == raft_pb2.Log.GET:
+                response.status = True
                 response.data.key = request.data.key
                 response.data.value = self.db.get(request.data.key)
             elif request.data.cmd == raft_pb2.Log.SET:
+                if self.leader_lease.leader_id != ID:
+                    response.status = False
+                    print(self.leader_lease)
+                    return response
+                response.status = True
                 log = raft_pb2.Log()
                 log.cmd = raft_pb2.Log.SET
                 log.key = request.data.key
