@@ -54,7 +54,7 @@ class Database:
     
     def dump_data(self)->None:
         with open("logs.txt", "w") as f:
-            f.write(json.dumps(self.logs))
+            f.write(json.dumps(self.data))
 
 class RaftServicer(raft_pb2_grpc.RaftServicer):
 
@@ -63,7 +63,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # persistent state on all servers
         self.current_term:int = 0
         self.voted_for = None
-        self.log:list[raft_pb2.Log] = [raft_pb2.Log()] # log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
+        self.log:list[raft_pb2.Log] = [raft_pb2.Log(term=1)] # log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
         
         # volatile state on all servers 
         self.commit_index:int = 0 # index of highest log entry known to be committed (initialized to 0, increases monotonically)
@@ -98,7 +98,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             request.prev_log_idx = len(self.log) - 1
             request.prev_log_term = self.log[-1].term
             request.leader_commit_idx = self.commit_index
-            request.entries.extend(self.log[self.next_index.get(peer, 0):])
+            request.entries.extend(self.log[self.next_index.get(peer, 1):])
             try:
                 response = stubs[peer].AppendEntries(request, timeout=RPC_TIMEOUT)
                 if response.success:
@@ -124,7 +124,11 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                 if count > len(NODES) // 2:
                     self.commit_index = i
                     break
-        
+
+        for i in range(self.last_applied, self.commit_index + 1):
+            self.db.handle_incoming_log(self.log[i])
+        self.last_applied = self.commit_index
+
         sleep(1)
         
     def follower_loop(self):
@@ -222,6 +226,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         return response
 
     def AppendEntries(self, request:raft_pb2.AppendEntriesRequest, context):
+        print(f"Received AppendEntries from {request.leader_id}")
         response:raft_pb2.AppendEntriesResponse = raft_pb2.AppendEntriesResponse()
 
         if request.term < self.current_term:
@@ -231,7 +236,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             return response
 
         # if log doesn't contain an entry at prev_log_idx whose term matches prev_log_term
-        if len(self.log) < request.prev_log_idx or self.log[request.prev_log_idx].term != request.prev_log_term:
+        if len(self.log) > request.prev_log_idx and self.log[request.prev_log_idx].term != request.prev_log_term:
             print(f"Received AppendEntries from {request.leader_id}: Sent False, log doesn't contain an entry at prev_log_idx whose term matches prev_log_term")
             response.term = self.current_term
             response.success = False
@@ -240,13 +245,13 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # refresh heartbeat timer
         self.curr_timeout = time()
 
-
         # if an existing entry conflicts with a new one (same index but different terms)
         if len(self.log) > request.prev_log_idx and self.log[request.prev_log_idx].term != request.prev_log_term:
             self.log = self.log[:request.prev_log_idx]
 
         # append any new entries not already in the log
         self.log.extend(request.entries)
+        print(self.log)
 
         # if leader_commit > commit_index, set commit_index = min(leader_commit, index of last new entry)
         if request.leader_commit_idx > self.commit_index:
@@ -270,7 +275,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         if self.leader_id == ID:
             response.status = True
             if request.data.cmd == raft_pb2.Log.GET:
-                response.data.key = response.data.key
+                response.data.key = request.data.key
                 response.data.value = self.db.get(request.data.key)
             elif request.data.cmd == raft_pb2.Log.SET:
                 log = raft_pb2.Log()
