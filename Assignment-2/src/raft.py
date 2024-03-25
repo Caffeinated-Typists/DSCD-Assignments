@@ -31,14 +31,14 @@ class Database:
     def __init__(self):
         self.has_meta = False
         self.metadata:dict = {
-            "curren_term": 0,
+            "current_term": 0,
             "voted_for": None,
             "commit_index": 0,
         }
         self.data:dict = dict()
         self.logs:list[raft_pb2.Log] = [raft_pb2.Log()]
         try:
-            with open("metadata.json", "w") as f:
+            with open("metadata.json", "r") as f:
                 self.metadata = json.loads(f.read())
                 self.has_meta = True
         except:
@@ -64,9 +64,10 @@ class Database:
     
     def handle_incoming_log(self, log:raft_pb2.Log)->bool:
         self.logs.append(log)
+        self.dump_log()
         if log.cmd is raft_pb2.Log.SET:
             self.set(log.key, log.value)
-        self.dump_data()
+        self.dump_db()
         return True
     
     def get(self, key)->str:
@@ -76,15 +77,17 @@ class Database:
         self.data[key] = val
         return True
     
-    def dump_data(self)->None:
+    def dump_meta(self)->None:
+        with open("metadata.json", "w") as f:
+            f.write(json.dumps(self.metadata))
+
+    def dump_db(self)->None:
         with open("db.json", "w") as f:
             f.write(json.dumps(self.data))
 
-        logs = list()
-        for log in self.logs:
-            logs.append(MessageToDict(log))
+    def dump_log(self)->None:
         with open("log.json", "w") as f:
-            f.write(json.dumps(logs))
+            f.write(json.dumps([MessageToDict(x) for x in self.logs]))
 
 
 class RaftServicer(raft_pb2_grpc.RaftServicer):
@@ -107,6 +110,9 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # leader specific volatile state, reinitialized after election
         self.next_index:dict = dict() # for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
         self.match_index:dict = dict() # for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
+        for peer in NODES:
+            self.next_index[peer] = 1
+            self.match_index[peer] = 0
 
         # leader id
         self.leader_id = None
@@ -144,7 +150,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                 continue
             print(f"Sending AppendEntries to {peer}")
             request.ClearField("entries")
-            request.entries.extend(self.log[self.next_index.get(peer, 1):])
+            #request.entries.extend(self.log[self.next_index.get(peer, 1):])
+            request.entries.extend(self.log[self.next_index[peer]+1:])
             try:
                 response = stubs[peer].AppendEntries(request, timeout=RPC_TIMEOUT)
                 if response.success:
@@ -162,18 +169,19 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             if self.log[i].term == self.current_term:
                 count = 0
                 for peer in NODES:
-                    if self.match_index.get(peer, -1) >= i:
+                    if self.match_index[peer] >= i:
                         count += 1
                 if count > len(NODES) // 2:
                     self.commit_index = i
                     break
 
-        for i in range(self.last_applied, self.commit_index + 1):
+        for i in range(self.last_applied + 1, self.commit_index + 1):
             self.db.handle_incoming_log(self.log[i])
         self.last_applied = self.commit_index
 
         self.db.metadata['commit_index'] = self.commit_index
-        self.db.dump_data()
+        self.db.metadata['voted_for'] = self.voted_for
+        self.db.dump_meta()
         sleep(HEARTBEAT_PERIOD)
         
     def follower_loop(self):
@@ -192,6 +200,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                         if self.votes > len(NODES) // 2:
                             self.leader_id = ID
                             self.log.append(raft_pb2.Log(cmd=raft_pb2.Log.NOOP, term=self.current_term))
+                            self.db.metadata["current_term"] = self.current_term
+                            self.db.dump_meta()
                             vote_cond.notify_all()
             except grpc.RpcError:
                 pass
@@ -227,8 +237,6 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         for t in thrds:
             t.join()
 
-        self.db.metadata["current_term"] = self.current_term
-        self.db.dump_data()
 
 
     def main_loop(self):
@@ -263,6 +271,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # if voted_for is None or candidate_id, and candidate's log is at least as up-to-date as receiver's log, grant vote
         if self.is_up_to_date(request.last_log_term, request.last_log_idx):
             if request.term > self.current_term or self.voted_for is None or self.voted_for == request.candidate_id:
+                self.db.metadata["current_term"] = self.current_term
+                self.db.dump_meta()
                 print(f"Received RequestVote from {request.candidate_id} : Sent True")
                 response.term = self.current_term
                 response.vote_granted = True
@@ -308,13 +318,17 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             self.commit_index = min(request.leader_commit_idx, len(self.log) - 1)
 
         print(f"Received AppendEntries from {request.leader_id}: Sent True")
+        self.current_term = request.term
+        self.voted_for = request.leader_id
         response.term = self.current_term
         response.success = True
         self.leader_id = request.leader_id
         if (request.leader_lease.leader_id != -1):
             self.leader_lease.CopyFrom(request.leader_lease)
+        self.db.metadata["current_term"] = self.current_term
+        self.db.metadata["commit_index"] = self.commit_index
         self.db.metadata["voted_for"] = self.voted_for
-        self.db.dump_data()
+        self.db.dump_meta()
         return response
 
 
