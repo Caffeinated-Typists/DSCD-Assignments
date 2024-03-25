@@ -6,6 +6,11 @@ from random import randint
 from time import time
 from time import sleep
 import threading
+from google.protobuf.json_format import ParseDict, MessageToDict
+
+import logging
+logging.basicConfig(filename='raft.log', level=logging.INFO)
+logger = logging.getLogger("Raft")
 
 import raft_pb2
 import raft_pb2_grpc
@@ -24,11 +29,28 @@ stubs = dict()
 
 class Database:
     def __init__(self):
+        self.has_meta = False
+        self.metadata:dict = {
+            "curren_term": 0,
+            "voted_for": None,
+            "commit_index": 0,
+        }
         self.data:dict = dict()
         self.logs:list[raft_pb2.Log] = [raft_pb2.Log()]
         try:
-            with open("logs.txt", "r") as f:
-                self.logs = json.loads(f.read())
+            with open("metadata.json", "w") as f:
+                self.metadata = json.loads(f.read())
+                self.has_meta = True
+        except:
+            self.has_meta = False
+
+        if not self.has_meta: return
+        try:
+            with open("db.json", "r") as f:
+                self.data = json.loads(f.read())
+            with open("log.json", "r") as f:
+                logs = json.loads(f.read())
+                self.logs = [ParseDict(x, message=raft_pb2.Log()) for x in logs]
             for log in self.logs:
                 if log.cmd is raft_pb2.Log.SET:
                     self.set(log.key, log.value)
@@ -55,17 +77,27 @@ class Database:
         return True
     
     def dump_data(self)->None:
-        with open("logs.txt", "w") as f:
+        with open("db.json", "w") as f:
             f.write(json.dumps(self.data))
+
+        logs = list()
+        for log in self.logs:
+            logs.append(MessageToDict(log))
+        with open("log.json", "w") as f:
+            f.write(json.dumps(logs))
+
 
 class RaftServicer(raft_pb2_grpc.RaftServicer):
 
     def __init__(self):
         super()
+
+        self.db = Database()
+
         # persistent state on all servers
         self.current_term:int = 0
         self.voted_for = None
-        self.log:list[raft_pb2.Log] = [raft_pb2.Log(term=1)] # log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
+        self.log:list[raft_pb2.Log] = [raft_pb2.Log(term=1, cmd=raft_pb2.Log.NOOP)] # log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
         
         # volatile state on all servers 
         self.commit_index:int = 0 # index of highest log entry known to be committed (initialized to 0, increases monotonically)
@@ -85,12 +117,16 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
         self.votes = 0
 
-        self.db = Database()
+        if self.db.has_meta:
+            self.current_term = self.db.metadata['current_term']
+            self.voted_for = self.db.metadata['voted_for']
+            self.log = self.db.logs
+            self.commit_index = self.db.metadata['commit_index']
+
   
     def leader_loop(self):
         # send AppendEntries RPCs to all peers
         # may have to be rewritten to be done in parallel
-        nodes_updated = 1
         request:raft_pb2.AppendEntriesRequest = raft_pb2.AppendEntriesRequest()
         request.term = self.current_term
         request.leader_id = ID
@@ -114,16 +150,13 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                 if response.success:
                     self.next_index[peer] = len(self.log)
                     self.match_index[peer] = len(self.log) - 1
-                    nodes_updated += 1
+                else:
+                    self.next_index[peer] -= 1
             except grpc.RpcError:
-                pass
+                print(f"AppendEntriesRequest failed for {id}, {peer}")
             except Exception as e:
                 raise e
             
-        # if nodes_updated <= len(NODES) // 2:
-        #     self.leader_id = None
-        #     return
-
         # if there exists an N such that N > commit_index, a majority of match_index[i] >= N, and log[N].term == current_term, set commit_index = N
         for i in range(len(self.log) - 1, self.commit_index, -1):
             if self.log[i].term == self.current_term:
@@ -139,6 +172,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             self.db.handle_incoming_log(self.log[i])
         self.last_applied = self.commit_index
 
+        self.db.metadata['commit_index'] = self.commit_index
+        self.db.dump_data()
         sleep(HEARTBEAT_PERIOD)
         
     def follower_loop(self):
@@ -156,6 +191,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                         self.votes += 1
                         if self.votes > len(NODES) // 2:
                             self.leader_id = ID
+                            self.log.append(raft_pb2.Log(cmd=raft_pb2.Log.NOOP, term=self.current_term))
                             vote_cond.notify_all()
             except grpc.RpcError:
                 pass
@@ -191,8 +227,9 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         for t in thrds:
             t.join()
 
-        # after the candidate is elected, check leader_lease
-                
+        self.db.metadata["current_term"] = self.current_term
+        self.db.dump_data()
+
 
     def main_loop(self):
         while True:
@@ -263,6 +300,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
         # append any new entries not already in the log
         self.log.extend(request.entries)
+        for log in request.entries:
+            self.db.handle_incoming_log(log)
 
         # if leader_commit > commit_index, set commit_index = min(leader_commit, index of last new entry)
         if request.leader_commit_idx > self.commit_index:
@@ -274,7 +313,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         self.leader_id = request.leader_id
         if (request.leader_lease.leader_id != -1):
             self.leader_lease.CopyFrom(request.leader_lease)
-        print(self.leader_lease)
+        self.db.metadata["voted_for"] = self.voted_for
+        self.db.dump_data()
         return response
 
 
@@ -313,8 +353,7 @@ if __name__ == "__main__":
     server.add_insecure_port(f"[::]:{RAFT_PORT}")
     try:
         server.start()
-        sleep(1) # wait for server to start
-        # create stubs for all peers
+        sleep(5) # wait for remote servers to start
         for node in NODES:
             channel = grpc.insecure_channel(f"{node}:{RAFT_PORT}")
             stub = raft_pb2_grpc.RaftStub(channel)

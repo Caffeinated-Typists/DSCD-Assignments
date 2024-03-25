@@ -76,9 +76,11 @@ class Log(_message.Message):
     __slots__ = ("cmd", "key", "value", "term")
     class action(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
         __slots__ = ()
+        NONE: _ClassVar[Log.action]
         NOOP: _ClassVar[Log.action]
         SET: _ClassVar[Log.action]
         GET: _ClassVar[Log.action]
+    NONE: Log.action
     NOOP: Log.action
     SET: Log.action
     GET: Log.action
