@@ -199,7 +199,6 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                         self.votes += 1
                         if self.votes > len(NODES) // 2:
                             self.leader_id = ID
-                            self.log.append(raft_pb2.Log(cmd=raft_pb2.Log.NOOP, term=self.current_term))
                             self.db.metadata["current_term"] = self.current_term
                             self.db.dump_meta()
                             vote_cond.notify_all()
@@ -237,6 +236,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         for t in thrds:
             t.join()
 
+        if self.leader_id == ID:
+            self.log.append(raft_pb2.Log(cmd=raft_pb2.Log.NOOP, term=self.current_term))
 
 
     def main_loop(self):
