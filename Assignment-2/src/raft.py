@@ -9,7 +9,7 @@ import threading
 from google.protobuf.json_format import ParseDict, MessageToDict
 
 import logging
-logging.basicConfig(filename='raft.log', level=logging.INFO)
+logging.basicConfig(filename='dump.txt', level=logging.INFO)
 logger = logging.getLogger("Raft")
 
 import raft_pb2
@@ -119,7 +119,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
         # heatbeat timer
         self.election_timeout:int = randint(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)
-        self.curr_timeout = time()
+        self.curr_timeout = None
 
         self.votes = 0
 
@@ -149,9 +149,10 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             if id == ID:
                 continue
             print(f"Sending AppendEntries to {peer}")
+            logger.info(f"Leader {ID} sending heartbeat & Renewing Lease")
             request.ClearField("entries")
             #request.entries.extend(self.log[self.next_index.get(peer, 1):])
-            request.entries.extend(self.log[self.next_index[peer]+1:])
+            request.entries.extend(self.log[self.next_index[peer]:])
             try:
                 response = stubs[peer].AppendEntries(request, timeout=RPC_TIMEOUT)
                 if response.success:
@@ -187,7 +188,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
     def follower_loop(self):
         # maintain a timer for election timeout
         while (time() - self.curr_timeout) < self.election_timeout:
-            sleep(0.5 * HEARTBEAT_PERIOD)
+            pass
         
         vote_cond = threading.Condition()
 
@@ -209,7 +210,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
 
         # convert to candidate
-        print(f"Node {ID} converting to candidate")
+        print(f"Node {ID} converting to candidate at time {time()}")
         self.current_term += 1
         self.election_timeout = randint(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)
         self.voted_for = ID
@@ -248,6 +249,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                 self.follower_loop()
 
     def run(self):
+        self.curr_timeout = time()
         threading.Thread(target=self.main_loop).start()
 
     def is_up_to_date(self, last_log_term:int, last_log_index:int)->bool:
@@ -310,6 +312,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             self.log = self.log[:request.prev_log_idx]
 
         # append any new entries not already in the log
+        print(request.entries)
         self.log.extend(request.entries)
         for log in request.entries:
             self.db.handle_incoming_log(log)
@@ -341,7 +344,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             return response
 
         response.leader_id = self.leader_id
-        if self.leader_id == ID:
+        if self.leader_lease.leader_id == ID and (time() - self.leader_lease.time) < LEASE_TIMEOUT:
             if request.data.cmd == raft_pb2.Log.GET:
                 response.status = True
                 response.data.key = request.data.key
@@ -358,6 +361,11 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                 log.value = request.data.value
                 log.term = self.current_term
                 self.log.append(log)
+        else:
+            response.status = False
+            response.leader_id = self.leader_id
+            return response
+
         return response
 
 
@@ -368,7 +376,9 @@ if __name__ == "__main__":
     server.add_insecure_port(f"[::]:{RAFT_PORT}")
     try:
         server.start()
+        print(f"Server started at time {time()}")
         sleep(5) # wait for remote servers to start
+
         for node in NODES:
             channel = grpc.insecure_channel(f"{node}:{RAFT_PORT}")
             stub = raft_pb2_grpc.RaftStub(channel)
