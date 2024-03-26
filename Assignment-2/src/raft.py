@@ -123,7 +123,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
         self.votes = 0
 
-        self.lease_timeout_wait:float = 0
+        self.lease_timeout_wait:float = 0 # maximum timestamp of old leader's lease, after which new lease can be issued by new leader
 
         if self.db.has_meta:
             self.current_term = self.db.metadata['current_term']
@@ -141,12 +141,28 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         request.prev_log_idx = len(self.log) - 1
         request.prev_log_term = self.log[-1].term
         request.leader_commit_idx = self.commit_index
+
+
+        if ((time() - self.leader_lease.time) > LEASE_TIMEOUT) and (self.leader_lease.leader_id  == ID):
+            self.leader_id = None
+            self.leader_lease.leader_id = -1
+            return
+
+        
         if (time() - self.lease_timeout_wait) < LEASE_TIMEOUT and self.leader_lease.leader_id != ID:
             request.leader_lease.leader_id = -1 
         else:
+            if self.leader_lease.leader_id != ID:
+                self.log.append(raft_pb2.Log(cmd=raft_pb2.Log.NOOP, term=self.current_term))
+
+            print("Request updated")
             request.leader_lease.leader_id = ID
             request.leader_lease.time = time()
-            self.leader_lease.CopyFrom(request.leader_lease)
+
+        
+            
+        
+        nodes_recieved = 1
         for id, peer in enumerate(NODES):
             if id == ID:
                 continue
@@ -160,13 +176,18 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                 if response.success:
                     self.next_index[peer] = len(self.log)
                     self.match_index[peer] = len(self.log) - 1
+                    nodes_recieved += 1
                 else:
                     self.next_index[peer] -= 1
+                
             except grpc.RpcError:
                 print(f"AppendEntriesRequest failed for {id}, {peer}")
             except Exception as e:
                 raise e
-            
+        
+        if nodes_recieved > len(NODES) // 2:
+            self.leader_lease.CopyFrom(request.leader_lease)
+
         # if there exists an N such that N > commit_index, a majority of match_index[i] >= N, and log[N].term == current_term, set commit_index = N
         for i in range(len(self.log) - 1, self.commit_index, -1):
             if self.log[i].term == self.current_term:
@@ -241,8 +262,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             t.join()
 
         if self.leader_id == ID:
-            self.log.append(raft_pb2.Log(cmd=raft_pb2.Log.NOOP, term=self.current_term))
             self.lease_timeout_wait = max(self.lease_timeout_wait, self.leader_lease.time)
+
 
 
     def main_loop(self):
