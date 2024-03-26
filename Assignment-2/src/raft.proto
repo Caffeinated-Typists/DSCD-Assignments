@@ -74,4 +74,5 @@ message VoteRequest {
 message VoteResponse {
     int32 term = 1; // current term, for candidate to update itself
     bool vote_granted = 2; // true means candidate received vote
+    float remaining_lease = 3;
 }

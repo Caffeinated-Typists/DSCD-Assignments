@@ -115,9 +115,11 @@ class VoteRequest(_message.Message):
     def __init__(self, term: _Optional[int] = ..., candidate_id: _Optional[int] = ..., last_log_idx: _Optional[int] = ..., last_log_term: _Optional[int] = ...) -> None: ...
 
 class VoteResponse(_message.Message):
-    __slots__ = ("term", "vote_granted")
+    __slots__ = ("term", "vote_granted", "remaining_lease")
     TERM_FIELD_NUMBER: _ClassVar[int]
     VOTE_GRANTED_FIELD_NUMBER: _ClassVar[int]
+    REMAINING_LEASE_FIELD_NUMBER: _ClassVar[int]
     term: int
     vote_granted: bool
-    def __init__(self, term: _Optional[int] = ..., vote_granted: bool = ...) -> None: ...
+    remaining_lease: float
+    def __init__(self, term: _Optional[int] = ..., vote_granted: bool = ..., remaining_lease: _Optional[float] = ...) -> None: ...

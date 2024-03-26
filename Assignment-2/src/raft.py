@@ -123,6 +123,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
         self.votes = 0
 
+        self.lease_timeout_wait:float = 0
+
         if self.db.has_meta:
             self.current_term = self.db.metadata['current_term']
             self.voted_for = self.db.metadata['voted_for']
@@ -139,7 +141,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         request.prev_log_idx = len(self.log) - 1
         request.prev_log_term = self.log[-1].term
         request.leader_commit_idx = self.commit_index
-        if (time() - self.leader_lease.time) < LEASE_TIMEOUT and self.leader_lease.leader_id != ID:
+        if (time() - self.lease_timeout_wait) < LEASE_TIMEOUT and self.leader_lease.leader_id != ID:
             request.leader_lease.leader_id = -1 
         else:
             request.leader_lease.leader_id = ID
@@ -203,6 +205,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                             self.db.metadata["current_term"] = self.current_term
                             self.db.dump_meta()
                             vote_cond.notify_all()
+                    self.lease_timeout_wait = max(self.lease_timeout_wait, response.remaining_lease)
             except grpc.RpcError:
                 pass
             except Exception as e:
@@ -239,6 +242,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
         if self.leader_id == ID:
             self.log.append(raft_pb2.Log(cmd=raft_pb2.Log.NOOP, term=self.current_term))
+            self.lease_timeout_wait = max(self.lease_timeout_wait, self.leader_lease.time)
 
 
     def main_loop(self):
@@ -279,6 +283,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                 print(f"Received RequestVote from {request.candidate_id} : Sent True")
                 response.term = self.current_term
                 response.vote_granted = True
+                response.remaining_lease = self.leader_lease.time
                 self.voted_for = request.candidate_id
                 return response
 
