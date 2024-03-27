@@ -2,7 +2,7 @@ import os
 import json
 import grpc
 from concurrent import futures
-from random import randint
+from random import random
 from time import time
 from time import sleep
 import threading
@@ -26,6 +26,8 @@ HEARTBEAT_PERIOD:int = 1
 LEASE_TIMEOUT:int = 7
 
 stubs = dict()
+
+rand_time = lambda x, y: x + random() * (y - x)
 
 class Database:
     def __init__(self):
@@ -118,10 +120,14 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         self.leader_id = None
 
         # heatbeat timer
-        self.election_timeout:int = randint(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)
+        self.election_timeout:int = rand_time(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)
         self.curr_timeout = None
 
         self.votes = 0
+
+        # lock for voting
+        self.voting_lock = threading.Lock()
+
 
         self.lease_timeout_wait:float = 0 # maximum timestamp of old leader's lease, after which new lease can be issued by new leader
 
@@ -236,7 +242,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # convert to candidate
         print(f"Node {ID} converting to candidate at time {time()}")
         self.current_term += 1
-        self.election_timeout = randint(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)
+        self.election_timeout = rand_time(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)
         self.voted_for = ID
         self.votes = 1
         request:raft_pb2.VoteRequest = raft_pb2.VoteRequest()
@@ -297,16 +303,17 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             return response
         
         # if voted_for is None or candidate_id, and candidate's log is at least as up-to-date as receiver's log, grant vote
-        if self.is_up_to_date(request.last_log_term, request.last_log_idx):
-            if request.term > self.current_term or self.voted_for is None or self.voted_for == request.candidate_id:
-                self.db.metadata["current_term"] = self.current_term
-                self.db.dump_meta()
-                print(f"Received RequestVote from {request.candidate_id} : Sent True")
-                response.term = self.current_term
-                response.vote_granted = True
-                response.remaining_lease = self.leader_lease.time
-                self.voted_for = request.candidate_id
-                return response
+        with self.voting_lock:
+            if self.is_up_to_date(request.last_log_term, request.last_log_idx):
+                if request.term > self.current_term or self.voted_for is None or self.voted_for == request.candidate_id:
+                    self.db.metadata["current_term"] = self.current_term
+                    self.db.dump_meta()
+                    print(f"Received RequestVote from {request.candidate_id} : Sent True")
+                    response.term = self.current_term
+                    response.vote_granted = True
+                    response.remaining_lease = self.leader_lease.time
+                    self.voted_for = request.candidate_id
+                    return response
 
         print(f"Received RequestVote from {request.candidate_id} : Sent False, voted_for is not None or candidate_id, and candidate's log is not at least as up-to-date as receiver's log")
         response.term = self.current_term

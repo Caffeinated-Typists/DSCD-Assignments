@@ -1,6 +1,15 @@
 version: '3'
 
 services:
+
+  client:
+    build: .
+    entrypoint: ash
+    tty: true
+    networks:
+      default:
+        ipv4_address: 10.0.1.128
+
   node-0:
     build: .
     entrypoint: ash # python /src/raft.py
