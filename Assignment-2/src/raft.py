@@ -137,6 +137,34 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             self.log = self.db.logs
             self.commit_index = self.db.metadata['commit_index']
 
+    def log_replication(self, request:raft_pb2.AppendEntriesRequest) -> int:
+        """Returns number of nodes that have replicated the log entry"""
+
+        nodes_recieved = 1
+        for id, peer in enumerate(NODES):
+            if id == ID:
+                continue
+            print(f"Sending AppendEntries to {peer}")
+            logger.info(f"Leader {ID} sending heartbeat & Renewing Lease")
+            request.ClearField("entries")
+            #request.entries.extend(self.log[self.next_index.get(peer, 1):])
+            request.entries.extend(self.log[self.next_index[peer]:])
+            try:
+                response = stubs[peer].AppendEntries(request, timeout=RPC_TIMEOUT)
+                if response.success:
+                    self.next_index[peer] = len(self.log)
+                    self.match_index[peer] = len(self.log) - 1
+                    nodes_recieved += 1
+                else:
+                    self.next_index[peer] -= 1
+                
+            except grpc.RpcError:
+                print(f"AppendEntriesRequest failed for {id}, {peer}")
+            except Exception as e:
+                raise e
+            
+        return nodes_recieved
+
   
     def leader_loop(self):
         # send AppendEntries RPCs to all peers
@@ -160,37 +188,12 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         else:
             if self.leader_lease.leader_id != ID:
                 self.log.append(raft_pb2.Log(cmd=raft_pb2.Log.NOOP, term=self.current_term))
-
-            print("Request updated")
             request.leader_lease.leader_id = ID
             request.leader_lease.time = time()
 
         
-            
-        
-        nodes_recieved = 1
-        for id, peer in enumerate(NODES):
-            if id == ID:
-                continue
-            print(f"Sending AppendEntries to {peer}")
-            logger.info(f"Leader {ID} sending heartbeat & Renewing Lease")
-            request.ClearField("entries")
-            #request.entries.extend(self.log[self.next_index.get(peer, 1):])
-            request.entries.extend(self.log[self.next_index[peer]:])
-            try:
-                response = stubs[peer].AppendEntries(request, timeout=RPC_TIMEOUT)
-                if response.success:
-                    self.next_index[peer] = len(self.log)
-                    self.match_index[peer] = len(self.log) - 1
-                    nodes_recieved += 1
-                else:
-                    self.next_index[peer] -= 1
-                
-            except grpc.RpcError:
-                print(f"AppendEntriesRequest failed for {id}, {peer}")
-            except Exception as e:
-                raise e
-        
+        nodes_recieved = self.log_replication(request)
+
         if nodes_recieved > len(NODES) // 2:
             self.leader_lease.CopyFrom(request.leader_lease)
 
@@ -288,7 +291,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             return True
         elif last_log_term == self.log[-1].term and last_log_index >= len(self.log) - 1:
             return True
-        return True
+        return False
 
 
     # RPC methods
@@ -387,13 +390,36 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                     response.status = False
                     print(self.leader_lease)
                     return response
-                response.status = True
+
                 log = raft_pb2.Log()
                 log.cmd = raft_pb2.Log.SET
                 log.key = request.data.key
                 log.value = request.data.value
                 log.term = self.current_term
                 self.log.append(log)
+
+                request:raft_pb2.AppendEntriesRequest = raft_pb2.AppendEntriesRequest()
+                request.term = self.current_term
+                request.leader_id = ID
+                request.prev_log_idx = len(self.log) - 1
+                request.prev_log_term = self.log[-1].term
+                request.leader_commit_idx = self.commit_index
+
+                request.leader_lease.leader_id = ID
+                request.leader_lease.time = time()
+
+                nodes_recieved = self.log_replication(request)
+                
+                if nodes_recieved > len(NODES) // 2:
+                    self.leader_lease.CopyFrom(request.leader_lease)
+                    response.status = True
+                    response.leader_id = self.leader_id
+                else:
+                    response.status = False
+                    response.leader_id = self.leader_id
+
+                return response
+
         else:
             response.status = False
             response.leader_id = self.leader_id
