@@ -2,6 +2,7 @@ import os
 import sys
 import grpc
 import random
+from time import time
 
 import raft_pb2
 import raft_pb2_grpc
@@ -68,3 +69,4 @@ if __name__ == "__main__":
         f.write(str(node_id))
 
     print(response)
+    print(f"Time: {time()}")
