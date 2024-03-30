@@ -107,7 +107,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # persistent state on all servers
         self.current_term:int = 0
         self.voted_for = None
-        self.raft_logs:list[raft_pb2.Log] = [raft_pb2.Log(term=1, cmd=raft_pb2.Log.NOOP)] # log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
+        self.raft_logs:list[raft_pb2.Log] = [raft_pb2.Log(term=0, cmd=raft_pb2.Log.NOOP)] # log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
         
         # volatile state on all servers 
         self.commit_index:int = 0 # index of highest log entry known to be committed (initialized to 0, increases monotonically)
@@ -151,7 +151,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             request.term = self.current_term
             request.leader_id = ID
             request.prev_log_idx = len(self.raft_logs) - 1
-            request.prev_log_term = self.raft_logs[-1].term
+            request.prev_log_term = self.raft_logs[request.prev_log_idx - 1].term
             request.leader_commit_idx = self.commit_index
 
 
@@ -184,7 +184,6 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                     
                 except grpc.RpcError as e:
                     print(f"AppendEntriesRequest failed for {id}, {peer}")
-                    print(e)
                 except Exception as e:
                     raise e
                 
@@ -274,7 +273,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         request.term = self.current_term
         request.candidate_id = ID
         request.last_log_idx = len(self.raft_logs) - 1
-        request.last_log_term = self.raft_logs[-1].term
+        request.last_log_term = self.raft_logs[request.last_log_idx - 1].term
 
         self.curr_timeout = time()
 
@@ -314,6 +313,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         threading.Thread(target=self.main_loop).start()
 
     def is_up_to_date(self, last_log_term:int, last_log_index:int)->bool:
+        print(f"Checking if up to date: {last_log_term, last_log_index, self.raft_logs[-1].term, len(self.raft_logs)}")
         if last_log_term > self.raft_logs[-1].term:
             return True
         elif last_log_term == self.raft_logs[-1].term and last_log_index >= len(self.raft_logs) - 1:
@@ -334,6 +334,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         
         # if voted_for is None or candidate_id, and candidate's log is at least as up-to-date as receiver's log, grant vote
         with self.voting_lock:
+            # print(self.is_up_to_date(request.last_log_term, request.last_log_idx), self.voted_for, request.candidate_id, self.current_term, request.term)
             if self.is_up_to_date(request.last_log_term, request.last_log_idx):
                 if request.term > self.current_term or self.voted_for is None or self.voted_for == request.candidate_id:
                     self.db.metadata["current_term"] = self.current_term
@@ -343,6 +344,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                     response.vote_granted = True
                     response.remaining_lease = self.leader_lease.time
                     self.voted_for = request.candidate_id
+                    self.curr_timeout = time()
                     return response
 
         print(f"Received RequestVote from {request.candidate_id} : Sent False, voted_for is not None or candidate_id, and candidate's log is not at least as up-to-date as receiver's log")
@@ -362,18 +364,20 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             return response
 
         # if log doesn't contain an entry at prev_log_idx whose term matches prev_log_term
-        if len(self.raft_logs) > request.prev_log_idx and self.raft_logs[request.prev_log_idx].term != request.prev_log_term:
+        # print(f"{request.prev_log_term, request.prev_log_idx, len(self.raft_logs)}")
+
+        if len(self.raft_logs) < request.prev_log_idx or self.raft_logs[request.prev_log_idx - 1].term != request.prev_log_term:
             print(f"Received AppendEntries from {request.leader_id}: Sent False, log doesn't contain an entry at prev_log_idx whose term matches prev_log_term")
             response.term = self.current_term
             response.success = False
             return response
-
+        
         # refresh heartbeat timer
         self.curr_timeout = time()
 
         # if an existing entry conflicts with a new one (same index but different terms)
-        if len(self.raft_logs) > request.prev_log_idx and self.raft_logs[request.prev_log_idx].term != request.prev_log_term:
-            self.raft_logs = self.raft_logs[:request.prev_log_idx]
+        # if len(self.raft_logs) > request.prev_log_idx and self.raft_logs[request.prev_log_idx - 1].term != request.entries[0].term:
+        self.raft_logs = self.raft_logs[:request.prev_log_idx]
 
         # append any new entries not already in the log
         print(request.entries)
