@@ -9,7 +9,8 @@ import raft_pb2_grpc
 
 NODES = os.environ["NODES"].split(',')
 RAFT_PORT = os.environ["RAFT_PORT"]
-REQ_TIMEOUT:int = 10
+REQ_TIMEOUT:int = 5
+MAX_RETRIES:int = 20
 
 if __name__ == "__main__":
     if len(sys.argv) < 3 or (sys.argv[1] == 'set' and len(sys.argv) < 4):
@@ -49,7 +50,10 @@ if __name__ == "__main__":
     response.status = False
     response.leader_id = node_id
 
-    while not response.status:
+    got_response_from = [False for _ in range(len(NODES))]
+
+
+    for _ in range(MAX_RETRIES):
         if response.leader_id != -1:
             node_id = response.leader_id
         else:
@@ -58,13 +62,22 @@ if __name__ == "__main__":
         node = NODES[node_id]
         channel = grpc.insecure_channel(f"{node}:{RAFT_PORT}")
         stub = raft_pb2_grpc.RaftStub(channel)
+        
 
         try:
             response = stub.RequestData(request, timeout=REQ_TIMEOUT)
+            if response.status:
+                break
         except grpc.RpcError as e:
             print(f"Error: Could not connect to {node}!")
             response.leader_id = -1
-    
+
+        got_response_from[node_id] = True
+
+        if all(got_response_from):
+            break
+
+
     with open('client_leader_id', 'w') as f:
         f.write(str(node_id))
 
