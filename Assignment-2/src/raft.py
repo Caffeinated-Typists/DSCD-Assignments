@@ -1,6 +1,7 @@
 import os
 import json
 import grpc
+import copy
 from concurrent import futures
 from random import random
 from time import time
@@ -28,6 +29,13 @@ LEASE_TIMEOUT:int = 7
 stubs = dict()
 
 rand_time = lambda x, y: x + random() * (y - x)
+
+def print_func_name(func):
+    def wrapper(*args, **kwargs):
+        print(f"Function '{func.__name__}' is called.")
+        return func(*args, **kwargs)
+    return wrapper
+
 
 class Database:
     def __init__(self):
@@ -60,7 +68,7 @@ class Database:
             raise e
 
     def __str__(self):
-        return f"data: {self.data}"
+        return f"data: {self.data}" 
     
     def handle_incoming_log(self, log:raft_pb2.Log)->bool:
         self.logs.append(log)
@@ -99,7 +107,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # persistent state on all servers
         self.current_term:int = 0
         self.voted_for = None
-        self.log:list[raft_pb2.Log] = [raft_pb2.Log(term=1, cmd=raft_pb2.Log.NOOP)] # log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
+        self.raft_logs:list[raft_pb2.Log] = [raft_pb2.Log(term=1, cmd=raft_pb2.Log.NOOP)] # log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
         
         # volatile state on all servers 
         self.commit_index:int = 0 # index of highest log entry known to be committed (initialized to 0, increases monotonically)
@@ -125,7 +133,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # locks
         self.voting_lock = threading.Lock()
         self.replication_lock = threading.Lock()
-
+        self.leader_lock = threading.Lock()
 
         self.lease_timeout_wait:float = 0 # maximum timestamp of old leader's lease, after which new lease can be issued by new leader
 
@@ -133,12 +141,26 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             print(self.db)
             self.current_term = self.db.metadata['current_term']
             self.voted_for = self.db.metadata['voted_for']
-            self.log = self.db.logs
+            self.raft_logs = copy.deepcopy(self.db.logs)
             self.commit_index = self.db.metadata['commit_index']
 
-    def log_replication(self, request:raft_pb2.AppendEntriesRequest) -> int:
+    def log_replication(self, update_lease:bool = True) -> int:
         """Replicated logs to the follower nodes"""
         with self.replication_lock:
+            request:raft_pb2.AppendEntriesRequest = raft_pb2.AppendEntriesRequest()
+            request.term = self.current_term
+            request.leader_id = ID
+            request.prev_log_idx = len(self.raft_logs) - 1
+            request.prev_log_term = self.raft_logs[-1].term
+            request.leader_commit_idx = self.commit_index
+
+
+            if update_lease:
+                request.leader_lease.leader_id = ID
+                request.leader_lease.time = time()
+            else:
+                request.leader_lease.leader_id = -1
+
             nodes_recieved = 1
             for id, peer in enumerate(NODES):
                 if id == ID:
@@ -146,13 +168,13 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                 print(f"Sending AppendEntries to {peer}")
                 logger.info(f"Leader {ID} sending heartbeat & Renewing Lease")
                 request.ClearField("entries")
-                #request.entries.extend(self.log[self.next_index.get(peer, 1):])
-                request.entries.extend(self.log[self.next_index[peer]:])
+                #request.entries.extend(self.raft_logs[self.next_index.get(peer, 1):])
+                request.entries.extend(self.raft_logs[self.next_index[peer]:])
                 try:
                     response = stubs[peer].AppendEntries(request, timeout=RPC_TIMEOUT)
                     if response.success:
-                        self.next_index[peer] = len(self.log)
-                        self.match_index[peer] = len(self.log) - 1
+                        self.next_index[peer] = len(self.raft_logs)
+                        self.match_index[peer] = len(self.raft_logs) - 1
                         nodes_recieved += 1
 
                     else:
@@ -170,8 +192,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                 self.leader_lease.CopyFrom(request.leader_lease)
 
             # if there exists an N such that N > commit_index, a majority of match_index[i] >= N, and log[N].term == current_term, set commit_index = N
-            for i in range(len(self.log) - 1, self.commit_index, -1):
-                if self.log[i].term == self.current_term:
+            for i in range(len(self.raft_logs) - 1, self.commit_index, -1):
+                if self.raft_logs[i].term == self.current_term:
                     count = 0
                     for peer in NODES:
                         if self.match_index[peer] >= i:
@@ -181,7 +203,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                         break
 
             for i in range(self.last_applied + 1, self.commit_index + 1):
-                self.db.handle_incoming_log(self.log[i])
+                self.db.handle_incoming_log(self.raft_logs[i])
             self.last_applied = self.commit_index
 
             self.db.metadata['commit_index'] = self.commit_index
@@ -195,31 +217,24 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
     def leader_loop(self):
         # send AppendEntries RPCs to all peers
         # may have to be rewritten to be done in parallel
-        request:raft_pb2.AppendEntriesRequest = raft_pb2.AppendEntriesRequest()
-        request.term = self.current_term
-        request.leader_id = ID
-        request.prev_log_idx = len(self.log) - 1
-        request.prev_log_term = self.log[-1].term
-        request.leader_commit_idx = self.commit_index
-
-
+        t1 = time()
+        
         if ((time() - self.leader_lease.time) > LEASE_TIMEOUT) and (self.leader_lease.leader_id  == ID):
             self.leader_id = None
             self.leader_lease.leader_id = -1
             return
-
         
         if (time() - self.lease_timeout_wait) < LEASE_TIMEOUT and self.leader_lease.leader_id != ID:
-            request.leader_lease.leader_id = -1 
+            self.log_replication(update_lease=False)
         else:
             if self.leader_lease.leader_id != ID:
-                self.log.append(raft_pb2.Log(cmd=raft_pb2.Log.NOOP, term=self.current_term))
-            request.leader_lease.leader_id = ID
-            request.leader_lease.time = time()
+                self.raft_logs.append(raft_pb2.Log(cmd=raft_pb2.Log.NOOP, term=self.current_term))
+            self.log_replication()
+
 
         print(self.next_index)
         print(self.match_index)
-        self.log_replication(request)
+    
 
         sleep(HEARTBEAT_PERIOD)
         
@@ -251,14 +266,18 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # convert to candidate
         print(f"Node {ID} converting to candidate at time {time()}")
         self.current_term += 1
+        print(f"Node {ID} current term: {self.current_term}")
         self.election_timeout = rand_time(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)
         self.voted_for = ID
         self.votes = 1
         request:raft_pb2.VoteRequest = raft_pb2.VoteRequest()
         request.term = self.current_term
         request.candidate_id = ID
-        request.last_log_idx = len(self.log) - 1
-        request.last_log_term = self.log[-1].term
+        request.last_log_idx = len(self.raft_logs) - 1
+        request.last_log_term = self.raft_logs[-1].term
+
+        self.curr_timeout = time()
+
         thrds:list[threading.Thread] = []
         for id, peer in enumerate(NODES):
             if id == ID:
@@ -271,6 +290,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
         with vote_cond:
             while self.votes <= len(NODES) // 2:
+                if (time() - self.curr_timeout) > self.election_timeout:
+                    break
                 vote_cond.wait()
 
         for t in thrds:
@@ -293,9 +314,9 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         threading.Thread(target=self.main_loop).start()
 
     def is_up_to_date(self, last_log_term:int, last_log_index:int)->bool:
-        if last_log_term > self.log[-1].term:
+        if last_log_term > self.raft_logs[-1].term:
             return True
-        elif last_log_term == self.log[-1].term and last_log_index >= len(self.log) - 1:
+        elif last_log_term == self.raft_logs[-1].term and last_log_index >= len(self.raft_logs) - 1:
             return True
         return False
 
@@ -329,6 +350,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         response.vote_granted = False
         return response
 
+    @print_func_name
     def AppendEntries(self, request:raft_pb2.AppendEntriesRequest, context):
         print(f"Received AppendEntries from {request.leader_id} at {time()}")
         response:raft_pb2.AppendEntriesResponse = raft_pb2.AppendEntriesResponse()
@@ -340,7 +362,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             return response
 
         # if log doesn't contain an entry at prev_log_idx whose term matches prev_log_term
-        if len(self.log) > request.prev_log_idx and self.log[request.prev_log_idx].term != request.prev_log_term:
+        if len(self.raft_logs) > request.prev_log_idx and self.raft_logs[request.prev_log_idx].term != request.prev_log_term:
             print(f"Received AppendEntries from {request.leader_id}: Sent False, log doesn't contain an entry at prev_log_idx whose term matches prev_log_term")
             response.term = self.current_term
             response.success = False
@@ -350,18 +372,18 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         self.curr_timeout = time()
 
         # if an existing entry conflicts with a new one (same index but different terms)
-        if len(self.log) > request.prev_log_idx and self.log[request.prev_log_idx].term != request.prev_log_term:
-            self.log = self.log[:request.prev_log_idx]
+        if len(self.raft_logs) > request.prev_log_idx and self.raft_logs[request.prev_log_idx].term != request.prev_log_term:
+            self.raft_logs = self.raft_logs[:request.prev_log_idx]
 
         # append any new entries not already in the log
         print(request.entries)
-        self.log.extend(request.entries)
+        self.raft_logs.extend(request.entries)
         for log in request.entries:
             self.db.handle_incoming_log(log)
 
         # if leader_commit > commit_index, set commit_index = min(leader_commit, index of last new entry)
         if request.leader_commit_idx > self.commit_index:
-            self.commit_index = min(request.leader_commit_idx, len(self.log) - 1)
+            self.commit_index = min(request.leader_commit_idx, len(self.raft_logs) - 1)
 
         print(f"Received AppendEntries from {request.leader_id}: Sent True")
         self.current_term = request.term
@@ -375,13 +397,15 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         self.db.metadata["commit_index"] = self.commit_index
         self.db.metadata["voted_for"] = self.voted_for
         self.db.dump_meta()
+        print(f"AppendEntries: responded at time {time()}")
         return response
 
 
     def RequestData(self, request, context):
-        print(f"Received RequestData from {context.peer()}")
+        print(f"RequestData: Received RequestData from {context.peer()} at {time()}")
         response = raft_pb2.DataResponse()
         if self.leader_id == None:
+            print(f"RequestData: Leader is None: False")
             response.leader_id = -1
             return response
 
@@ -393,6 +417,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                 response.data.value = self.db.get(request.data.key)
             elif request.data.cmd == raft_pb2.Log.SET:
                 if self.leader_lease.leader_id != ID:
+                    print(f"RequestData: Leader does not have lease: False")
                     response.status = False
                     print(self.leader_lease)
                     return response
@@ -402,19 +427,11 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                 log.key = request.data.key
                 log.value = request.data.value
                 log.term = self.current_term
-                self.log.append(log)
+                with self.replication_lock:
+                    self.raft_logs.append(log)
 
-                request:raft_pb2.AppendEntriesRequest = raft_pb2.AppendEntriesRequest()
-                request.term = self.current_term
-                request.leader_id = ID
-                request.prev_log_idx = len(self.log) - 1
-                request.prev_log_term = self.log[-1].term
-                request.leader_commit_idx = self.commit_index
 
-                request.leader_lease.leader_id = ID
-                request.leader_lease.time = time()
-
-                nodes_recieved = self.log_replication(request)
+                nodes_recieved = self.log_replication()
                 
                 if nodes_recieved > len(NODES) // 2:
                     response.status = True
