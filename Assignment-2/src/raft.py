@@ -275,7 +275,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         request.term = self.current_term
         request.candidate_id = ID
         request.last_log_idx = len(self.raft_logs) - 1
-        request.last_log_term = self.raft_logs[request.last_log_idx - 1].term
+        request.last_log_term = self.raft_logs[request.last_log_idx].term
 
         self.curr_timeout = time()
 
@@ -301,6 +301,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         if self.leader_id == ID:
             for peer in NODES:
                 self.match_index[peer] = self.commit_index
+                self.next_index[peer] = self.commit_index + 1
             self.lease_timeout_wait = max(self.lease_timeout_wait, self.leader_lease.time)
 
 
