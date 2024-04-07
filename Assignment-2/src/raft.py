@@ -166,7 +166,6 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                 if id == ID:
                     continue
                 print(f"Sending AppendEntries to {peer}")
-                logger.info(f"Leader {ID} sending heartbeat & Renewing Lease")
                 request.ClearField("entries")
                 #request.entries.extend(self.raft_logs[self.next_index.get(peer, 1):])
                 request.prev_log_idx = self.match_index[peer]
@@ -186,6 +185,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                     
                 except grpc.RpcError as e:
                     print(f"AppendEntriesRequest failed for {id}, {peer}")
+                    logger.info(f"Error occurred while sending RPC to Node {ID}")
                 except Exception as e:
                     raise e
                 
@@ -205,6 +205,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
             for i in range(self.last_applied + 1, self.commit_index + 1):
                 self.db.handle_incoming_log(self.raft_logs[i])
+                logger.info(f"Node {ID} (leader) committed the entry {raft_pb2.Log.action.Name(self.raft_logs[i].cmd)} {self.raft_logs[i].key} {self.raft_logs[i].value if self.raft_logs[i].cmd == raft_pb2.Log.SET else ''} to the state machine.")
             self.last_applied = self.commit_index
 
             self.db.metadata['commit_index'] = self.commit_index
@@ -223,13 +224,16 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         if ((time() - self.leader_lease.time) > LEASE_TIMEOUT) and (self.leader_lease.leader_id  == ID):
             self.leader_id = None
             self.leader_lease.leader_id = -1
+            logger.info(f"Leader {ID} lease renewal failed, Stepping down")
             return
         
         if (time() - self.lease_timeout_wait) < LEASE_TIMEOUT and self.leader_lease.leader_id != ID:
             self.log_replication(update_lease=False)
+            logger.info("New Leader waiting for Old Leader Lease to timeout")
         else:
             if self.leader_lease.leader_id != ID:
                 self.raft_logs.append(raft_pb2.Log(cmd=raft_pb2.Log.NOOP, term=self.current_term))
+            logger.info(f"Leader {ID} sending heartbeat & Renewing Lease")
             self.log_replication()
 
 
@@ -245,6 +249,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             pass
         
         vote_cond = threading.Condition()
+        logger.info(f"Node {ID} election timer timed out, Starting election")
 
         def subroutine(request, peer):
             try:
@@ -256,6 +261,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                             self.leader_id = ID
                             self.db.metadata["current_term"] = self.current_term
                             self.db.dump_meta()
+                            logger.info(f"Node {ID} became the leader for term {self.current_term}")
                             vote_cond.notify_all()
                     self.lease_timeout_wait = max(self.lease_timeout_wait, response.remaining_lease)
             except grpc.RpcError:
@@ -333,6 +339,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # if request.term < current_term, return false
         if (request.term < self.current_term):
             print(f"Received RequestVote from {request.candidate_id} : Sent False, request.term < current_term")  
+            logger.info(f"Vote denied for Node {request.candidate_id} in term {self.current_term + 1}.")
             response.term = self.current_term
             response.vote_granted = False
             return response
@@ -350,20 +357,22 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                     response.remaining_lease = self.leader_lease.time
                     self.voted_for = request.candidate_id
                     self.curr_timeout = time()
+                    logger.info(f"Vote granted for Node {request.candidate_id} in term {self.current_term + 1}.")
                     return response
 
         print(f"Received RequestVote from {request.candidate_id} : Sent False, voted_for is not None or candidate_id, and candidate's log is not at least as up-to-date as receiver's log")
+        logger.info(f"Vote denied for Node {request.candidate_id} in term {self.current_term + 1}.")
         response.term = self.current_term
         response.vote_granted = False
         return response
 
-    @print_func_name
     def AppendEntries(self, request:raft_pb2.AppendEntriesRequest, context):
         print(f"Received AppendEntries from {request.leader_id} at {time()}")
         response:raft_pb2.AppendEntriesResponse = raft_pb2.AppendEntriesResponse()
 
         if request.term < self.current_term:
             print(f"Received AppendEntries from {request.leader_id}: Sent False")
+            logger.info(f"Node {ID} rejected AppendEntries RPC from {self.leader_id}")
             response.term = self.current_term
             response.success = False
             return response
@@ -374,6 +383,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         # if len(self.raft_logs) < request.prev_log_idx or self.raft_logs[request.prev_log_idx - 1].term != request.prev_log_term:
         if len(self.raft_logs) <= request.prev_log_idx or self.raft_logs[request.prev_log_idx].term != request.prev_log_term:
             print(f"Received AppendEntries from {request.leader_id}: Sent False, log doesn't contain an entry at prev_log_idx whose term matches prev_log_term")
+            logger.info(f"Node {ID} rejected AppendEntries RPC from {self.leader_id}")
             response.term = self.current_term
             response.success = False
             return response
@@ -390,12 +400,14 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         self.raft_logs.extend(request.entries)
         for log in request.entries:
             self.db.handle_incoming_log(log)
+            logger.info(f"Node {ID} (follower) committed the entry {raft_pb2.Log.action.Name(log.cmd)} {log.key} {log.value if log.cmd == raft_pb2.Log.SET else ''} to the state machine.")
 
         # if leader_commit > commit_index, set commit_index = min(leader_commit, index of last new entry)
         if request.leader_commit_idx > self.commit_index:
             self.commit_index = min(request.leader_commit_idx, len(self.raft_logs) - 1)
 
         print(f"Received AppendEntries from {request.leader_id}: Sent True")
+        logger.info(f"Node {ID} accepted AppendEntries RPC from {self.leader_id}")
         self.current_term = request.term
         self.voted_for = request.leader_id
         response.term = self.current_term
@@ -413,6 +425,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
     def RequestData(self, request, context):
         print(f"RequestData: Received RequestData from {context.peer()} at {time()}")
+        logger.info(f"Node {self.leader_id} (leader) received an {raft_pb2.Log.action.Name(request.data.cmd)} {request.data.key} {request.data.value if request.data.cmd == raft_pb2.Log.SET else ''} request")
         response = raft_pb2.DataResponse()
         if self.leader_id == None:
             print(f"RequestData: Leader is None: False")
