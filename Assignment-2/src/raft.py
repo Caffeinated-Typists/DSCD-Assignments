@@ -151,7 +151,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             request.term = self.current_term
             request.leader_id = ID
             request.prev_log_idx = len(self.raft_logs) - 1
-            request.prev_log_term = self.raft_logs[request.prev_log_idx - 1].term
+            request.prev_log_term = self.raft_logs[request.prev_log_idx].term
             request.leader_commit_idx = self.commit_index
 
 
@@ -169,6 +169,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
                 logger.info(f"Leader {ID} sending heartbeat & Renewing Lease")
                 request.ClearField("entries")
                 #request.entries.extend(self.raft_logs[self.next_index.get(peer, 1):])
+                request.prev_log_idx = self.match_index[peer]
+                request.prev_log_term = self.raft_logs[request.prev_log_idx].term
                 request.entries.extend(self.raft_logs[self.next_index[peer]:])
                 try:
                     response = stubs[peer].AppendEntries(request, timeout=RPC_TIMEOUT)
@@ -297,6 +299,8 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             t.join()
 
         if self.leader_id == ID:
+            for peer in NODES:
+                self.match_index[peer] = self.commit_index
             self.lease_timeout_wait = max(self.lease_timeout_wait, self.leader_lease.time)
 
 
@@ -364,9 +368,10 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             return response
 
         # if log doesn't contain an entry at prev_log_idx whose term matches prev_log_term
-        # print(f"{request.prev_log_term, request.prev_log_idx, len(self.raft_logs)}")
+        print(f"{request.prev_log_term, request.prev_log_idx, len(self.raft_logs)}")
 
-        if len(self.raft_logs) < request.prev_log_idx or self.raft_logs[request.prev_log_idx - 1].term != request.prev_log_term:
+        # if len(self.raft_logs) < request.prev_log_idx or self.raft_logs[request.prev_log_idx - 1].term != request.prev_log_term:
+        if len(self.raft_logs) <= request.prev_log_idx or self.raft_logs[request.prev_log_idx].term != request.prev_log_term:
             print(f"Received AppendEntries from {request.leader_id}: Sent False, log doesn't contain an entry at prev_log_idx whose term matches prev_log_term")
             response.term = self.current_term
             response.success = False
@@ -377,7 +382,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
 
         # if an existing entry conflicts with a new one (same index but different terms)
         # if len(self.raft_logs) > request.prev_log_idx and self.raft_logs[request.prev_log_idx - 1].term != request.entries[0].term:
-        self.raft_logs = self.raft_logs[:request.prev_log_idx]
+        self.raft_logs = self.raft_logs[:request.prev_log_idx + 1]
 
         # append any new entries not already in the log
         print(request.entries)
