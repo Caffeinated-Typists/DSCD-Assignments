@@ -1,4 +1,10 @@
 import os
+iPC_TIMEOUT:float = 0.3 # seconds
+ELECTION_TIMEOUT_MIN:int = 5
+ELECTION_TIMEOUT_MAX:int = 10
+HEARTBEAT_PERIOD:int = 1
+LEASE_TIMEOUT:int = 7
+
 import json
 import grpc
 import copy
@@ -10,7 +16,7 @@ import threading
 from google.protobuf.json_format import ParseDict, MessageToDict
 
 import logging
-logging.basicConfig(filename='dump.txt', level=logging.INFO)
+logging.basicConfig(filename='dump.txt', level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger("Raft")
 
 import raft_pb2
@@ -20,11 +26,11 @@ ID = int(os.environ["ID"])
 NODES = os.environ["NODES"].split(',')
 RAFT_PORT = os.environ["RAFT_PORT"]
 
-RPC_TIMEOUT:float = 0.3 # seconds
-ELECTION_TIMEOUT_MIN:int = 5
-ELECTION_TIMEOUT_MAX:int = 10
-HEARTBEAT_PERIOD:int = 1
-LEASE_TIMEOUT:int = 7
+RPC_TIMEOUT:float = 0.5 # seconds           
+ELECTION_TIMEOUT_MIN:int = 8                
+ELECTION_TIMEOUT_MAX:int = 15               
+HEARTBEAT_PERIOD:int = 1                    
+LEASE_TIMEOUT:int = 10
 
 stubs = dict()
 
@@ -237,9 +243,6 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             self.log_replication()
 
 
-        print(self.next_index)
-        print(self.match_index)
-    
 
         sleep(HEARTBEAT_PERIOD)
         
@@ -299,7 +302,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             while self.votes <= len(NODES) // 2:
                 if (time() - self.curr_timeout) > self.election_timeout:
                     break
-                vote_cond.wait()
+                vote_cond.wait(timeout=1)
 
         for t in thrds:
             t.join()
@@ -324,7 +327,6 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         threading.Thread(target=self.main_loop).start()
 
     def is_up_to_date(self, last_log_term:int, last_log_index:int)->bool:
-        print(f"Checking if up to date: {last_log_term, last_log_index, self.raft_logs[-1].term, len(self.raft_logs)}")
         if last_log_term > self.raft_logs[-1].term:
             return True
         elif last_log_term == self.raft_logs[-1].term and last_log_index >= len(self.raft_logs) - 1:
@@ -378,7 +380,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
             return response
 
         # if log doesn't contain an entry at prev_log_idx whose term matches prev_log_term
-        print(f"{request.prev_log_term, request.prev_log_idx, len(self.raft_logs)}")
+        # print(f"{request.prev_log_term, request.prev_log_idx, len(self.raft_logs)}")
 
         # if len(self.raft_logs) < request.prev_log_idx or self.raft_logs[request.prev_log_idx - 1].term != request.prev_log_term:
         if len(self.raft_logs) <= request.prev_log_idx or self.raft_logs[request.prev_log_idx].term != request.prev_log_term:
