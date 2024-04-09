@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+service Master {
+    rpc MapDone (Empty) returns (Response) {}
+    rpc ReduceDone (Empty) returns (Response) {}
+}
+
+service Mapper {
+    rpc Map (MapRequest) returns (Response) {}
+    rpc GetMap (Empty) returns (Response) {}
+    rpc Ping (Empty) returns (Response) {}
+}
+
+service Reducer {
+    rpc Reduce (ReduceRequest) returns (Response) {}
+    rpc Ping (Empty) returns (Response) {}
+}
+
+message Response {
+    bool status = 1;
+}
+
+message MapRequest {
+}
+
+message ReduceRequest {
+}
+
+message Empty {} // google.protobuf.Empty
