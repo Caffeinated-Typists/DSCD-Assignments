@@ -21,6 +21,10 @@ message Response {
 }
 
 message MapRequest {
+    // int id
+    // int reducers
+    // int centriods
+    // file start & end idx
 }
 
 message ReduceRequest {
