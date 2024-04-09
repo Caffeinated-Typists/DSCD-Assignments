@@ -1,73 +1,78 @@
 syntax = "proto3";
 
 service Raft {
-    rpc SendHeartbeat (Heartbeat) returns (Response) {}
     rpc AppendEntries (AppendEntriesRequest) returns (AppendEntriesResponse) {}
     rpc RequestVote (VoteRequest) returns (VoteResponse) {}
-    // TODO: add snapshot rpc
+    rpc InstallSnapshot (InstallSnapshotRequest) returns (InstallSnapshotResponse) {}
+    rpc RequestData (DataRequest) returns (DataResponse) {}
 }
 
-service Database {
-    rpc RequestData (DbRequest) returns (DbResponse) {}
+message DataRequest {
+    Log data = 1;
 }
 
-message Response {
-    int32 status = 1; 
-    string info = 2;
-}
-
-message DbRequest {
-    int32 type = 1;
-    Log data = 2;
-}
-
-message DbResponse {
-    int32 status = 1;
-    Log data = 2;
+message DataResponse {
+    bool status = 1;
+    int32 leader_id = 2;
+    Log data = 3;
 }
 
 message AppendEntriesRequest {
-    int32 term = 1;
-    int32 leader_id = 2;
-    int32 prev_log_idx = 3;
-    int32 prev_log_term = 4;
-    int32 leader_commit_idx = 5;
-    Log data = 6;
+    int32 term = 1; // leader's term
+    int32 leader_id = 2; // so follower can redirect clients
+    int32 prev_log_idx = 3; // index of log entry immediately preceding new ones
+    int32 prev_log_term = 4; // term of prev_log_idx entry
+    int32 leader_commit_idx = 5; // leader's commit index
+    Lease leader_lease = 6; // leader's lease
+    repeated Log entries = 7; // log entries to store (empty for heartbeat)
 }
 
 message AppendEntriesResponse {
-    int32 term = 1;
-    bool success = 2;
+    int32 term = 1; // current term, for leader to update itself
+    bool success = 2; // true if follower contained entry matching prev_log_idx and prev_log_term
 }
 
-message Heartbeat {
-    int32 term = 1;
-    int32 lease_time = 2;
+message InstallSnapshotRequest {
+    int32 term = 1; // leader's term
+    int32 leader_id = 2; // so follower can redirect clients
+    int32 last_incl_idx = 3; // index of the last log entry included in the snapshot
+    int32 last_incl_term = 4; // term of the last log entry included in the snapshot
+    int32 offset = 5; // byte offset where chunk is positioned in the snapshot
+    repeated Log data = 6; // raw bytes of the snapshot chunk, starting at offset
+    bool done = 7; // true if this is the last chunk
 }
 
-message InstallSnapshot {
-    int32 term = 1;
-    int32 leader_id = 2;
-    int32 last_incl_idx = 3;
-    int32 last_incl_term = 4;
-    int32 offset = 5;
-    repeated Log data = 6;
-    bool done = 7;
+message InstallSnapshotResponse {
+    int32 term = 1; // current term, for leader to update itself
 }
 
 message Log {
-    string key = 1;
-    string value = 2;
+    enum action {
+        NONE = 0;
+        NOOP = 1;
+        SET = 2;
+        GET = 3;
+    } 
+    action cmd = 1; // command type
+    string key = 2; // key for get/set
+    string value = 3; // value for set
+    int32 term = 4; // term when entry was received by leader
+}
+
+message Lease {
+    int32 leader_id = 1;
+    double time = 2;
 }
 
 message VoteRequest {
-    int32 term = 1;
-    int32 candidate_id = 2;
-    int32 last_log_idx = 3;
-    int32 last_log_term = 4;
+    int32 term = 1; // candidate's term
+    int32 candidate_id = 2; // candidate requesting vote
+    int32 last_log_idx = 3; // index of candidate's last log entry
+    int32 last_log_term = 4; // term of candidate's last log entry
 }
 
 message VoteResponse {
-    int32 term = 1;
-    bool vote_granted = 2;
+    int32 term = 1; // current term, for candidate to update itself
+    bool vote_granted = 2; // true means candidate received vote
+    double remaining_lease = 3;
 }
