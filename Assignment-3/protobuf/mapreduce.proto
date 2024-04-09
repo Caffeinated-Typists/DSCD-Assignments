@@ -7,7 +7,7 @@ service Master {
 
 service Mapper {
     rpc Map (MapRequest) returns (Response) {}
-    rpc GetMap (Empty) returns (Response) {}
+    rpc GetPartition (PartitionRequest) returns (PartitionResponse) {}
     rpc Ping (Empty) returns (Response) {}
 }
 
@@ -21,10 +21,18 @@ message Response {
 }
 
 message MapRequest {
-    // int id
-    // int reducers
-    // int centriods
-    // file start & end idx
+    int32 id = 1;
+    int32 start = 2;
+    int32 end = 3;
+    int32 reducers = 4; // number of reducers
+}
+
+message PartitionRequest {
+    int32 idx = 1; // which partition to get
+}
+
+message PartitionResponse {
+    string data = 1;
 }
 
 message ReduceRequest {

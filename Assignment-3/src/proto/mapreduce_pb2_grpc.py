@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-import mapreduce_pb2 as mapreduce__pb2
+from . import mapreduce_pb2 as mapreduce__pb2
 
 
 class MasterStub(object):
@@ -113,10 +113,10 @@ class MapperStub(object):
                 request_serializer=mapreduce__pb2.MapRequest.SerializeToString,
                 response_deserializer=mapreduce__pb2.Response.FromString,
                 )
-        self.GetMap = channel.unary_unary(
-                '/Mapper/GetMap',
-                request_serializer=mapreduce__pb2.Empty.SerializeToString,
-                response_deserializer=mapreduce__pb2.Response.FromString,
+        self.GetPartition = channel.unary_unary(
+                '/Mapper/GetPartition',
+                request_serializer=mapreduce__pb2.PartitionRequest.SerializeToString,
+                response_deserializer=mapreduce__pb2.PartitionResponse.FromString,
                 )
         self.Ping = channel.unary_unary(
                 '/Mapper/Ping',
@@ -134,7 +134,7 @@ class MapperServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def GetMap(self, request, context):
+    def GetPartition(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -154,10 +154,10 @@ def add_MapperServicer_to_server(servicer, server):
                     request_deserializer=mapreduce__pb2.MapRequest.FromString,
                     response_serializer=mapreduce__pb2.Response.SerializeToString,
             ),
-            'GetMap': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetMap,
-                    request_deserializer=mapreduce__pb2.Empty.FromString,
-                    response_serializer=mapreduce__pb2.Response.SerializeToString,
+            'GetPartition': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetPartition,
+                    request_deserializer=mapreduce__pb2.PartitionRequest.FromString,
+                    response_serializer=mapreduce__pb2.PartitionResponse.SerializeToString,
             ),
             'Ping': grpc.unary_unary_rpc_method_handler(
                     servicer.Ping,
@@ -192,7 +192,7 @@ class Mapper(object):
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
     @staticmethod
-    def GetMap(request,
+    def GetPartition(request,
             target,
             options=(),
             channel_credentials=None,
@@ -202,9 +202,9 @@ class Mapper(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/Mapper/GetMap',
-            mapreduce__pb2.Empty.SerializeToString,
-            mapreduce__pb2.Response.FromString,
+        return grpc.experimental.unary_unary(request, target, '/Mapper/GetPartition',
+            mapreduce__pb2.PartitionRequest.SerializeToString,
+            mapreduce__pb2.PartitionResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
