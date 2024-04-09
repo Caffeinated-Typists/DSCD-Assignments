@@ -1,10 +1,4 @@
 import os
-iPC_TIMEOUT:float = 0.3 # seconds
-ELECTION_TIMEOUT_MIN:int = 5
-ELECTION_TIMEOUT_MAX:int = 10
-HEARTBEAT_PERIOD:int = 1
-LEASE_TIMEOUT:int = 7
-
 import json
 import grpc
 import copy
