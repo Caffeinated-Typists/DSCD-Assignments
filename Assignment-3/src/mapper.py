@@ -1,5 +1,6 @@
 from concurrent import futures
 from itertools import islice
+from os import mkdir
 import grpc
 import sys
 import numpy as np
@@ -55,12 +56,15 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
         values = list(closest_centroid.values())
 
         key_chunks = np.array_split(keys, request.k)
-        value_chunks = np.array_split(values, request.reducers)
+        value_chunks = np.array_split(values, request.k)
+
+        # make the directory for the mapper
+        mkdir(f"{MAPPERS_ROOT}/M{self.mapper_id}")
 
         # Reconstruct the chunks as dictionaries and store them in files
         for i, (key_chunk, value_chunk) in enumerate(zip(key_chunks, value_chunks)):
             chunk = dict(zip(key_chunk, value_chunk))
-            with open(f"{MAPPERS_ROOT}/M{request.id}/partition_{i}.pkl", "wb") as f:
+            with open(f"{MAPPERS_ROOT}/M{self.mapper_id}/partition_{i}.pkl", "wb") as f:
                 pickle.dump(chunk, f)
 
 
@@ -68,7 +72,7 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
         """Return the partition file for the given partition number"""
         response:mapreduce_pb2.PartitionResponse = mapreduce_pb2.PartitionResponse()
 
-        with open(f"{MAPPERS_ROOT}/M{self.mapper_id}/partition_{request.partition}.pkl", "rb") as f:
+        with open(f"{MAPPERS_ROOT}/M{self.mapper_id}/partition_{request.idx}.pkl", "rb") as f:
             data = pickle.load(f)
             response.data = pickle.dumps(data)
 
