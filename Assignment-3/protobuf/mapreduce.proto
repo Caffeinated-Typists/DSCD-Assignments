@@ -32,7 +32,17 @@ message PartitionRequest {
 }
 
 message PartitionResponse {
-    string data = 1;
+    bytes data = 1; /* used pickle to serialize the data (too lazy to write 
+    // custom data type for conversion between python data types and protobuf types)
+    // It will be a dictionary of the form 
+    // {k1: 
+    //      [
+                [p1, p2, ...], // point p for key k1 
+                [q1, q2, ...], // point q for key k1
+                ...
+    // }
+    // where point p is a numpy.ndarray 
+    */
 }
 
 message ReduceRequest {
