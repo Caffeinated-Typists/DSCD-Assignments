@@ -58,8 +58,11 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
         key_chunks = np.array_split(keys, request.k)
         value_chunks = np.array_split(values, request.k)
 
-        # make the directory for the mapper
-        mkdir(f"{MAPPERS_ROOT}/M{self.mapper_id}")
+        # make the directory for the mapper if it does not exist
+        try:
+            mkdir(f"{MAPPERS_ROOT}/M{self.mapper_id}")
+        except FileExistsError:
+            pass
 
         # Reconstruct the chunks as dictionaries and store them in files
         for i, (key_chunk, value_chunk) in enumerate(zip(key_chunks, value_chunks)):
