@@ -15,13 +15,13 @@ MAPPERS_ROOT:str = "Data/Mappers"
 
 class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
     def __init__(self):
-        pass
+        self.mapper_id = 0
 
     def Map(self, request:mapreduce_pb2.MapRequest, context):
         # read the points and centroids file
         points:np.ndarray = None
         centroids:np.ndarray = None
-        
+        self.mapper_id = request.id
 
         with open(POINTS_FILE, "r") as f:
             points = f.readlines()
@@ -64,8 +64,16 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
                 pickle.dump(chunk, f)
 
 
-    def GetMap(self, request, context):
-        return super().GetMap(request, context)
+    def GetMap(self, request:mapreduce_pb2.PartitionRequest, context):
+        """Return the partition file for the given partition number"""
+        response:mapreduce_pb2.PartitionResponse = mapreduce_pb2.PartitionResponse()
+
+        with open(f"{MAPPERS_ROOT}/M{self.mapper_id}/partition_{request.partition}.pkl", "rb") as f:
+            data = pickle.load(f)
+            response.data = pickle.dumps(data)
+
+        return response
+
 
     def Ping(self, request, context):
         response:mapreduce_pb2.Response = mapreduce_pb2.Response()
