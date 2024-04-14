@@ -1,12 +1,13 @@
 import argparse
 import logging
 from subprocess import Popen
+from time import sleep
 
 import grpc
 from concurrent import futures
 
-from proto import mapreduce_pb2
-from proto import mapreduce_pb2_grpc
+import mapreduce_pb2
+import mapreduce_pb2_grpc
 
 BASE_PORT_MAPPER: int = 50100
 BASE_PORT_REDUCER: int = 50200
@@ -31,19 +32,31 @@ class MasterServicer(mapreduce_pb2_grpc.MasterServicer):
         logging.info(f"Starting {args.num_mappers} mapper instances.")
         for mapper_id in range(BASE_PORT_MAPPER, BASE_PORT_MAPPER + args.num_mappers):
             self.mapper_proc[mapper_id] = Popen(["python3", "src/mapper.py", str(mapper_id)])
-            channel = grpc.insecure_channel(f"[::]:{mapper_id}")
+            channel = grpc.insecure_channel(f"127.0.0.1:{mapper_id}")
             self.mapper[mapper_id] = mapreduce_pb2_grpc.MapperStub(channel)
 
         logging.info(f"Starting {args.num_reducers} recducer instances.")
         for reducer_id in range(BASE_PORT_REDUCER, BASE_PORT_REDUCER + args.num_reducers):
             self.reducer_proc[reducer_id] = Popen(["python3", "src/reducer.py", str(reducer_id)])
-            channel = grpc.insecure_channel(f"[::]:{reducer_id}")
+            channel = grpc.insecure_channel(f"127.0.0.1:{reducer_id}")
             self.reducer[reducer_id] = mapreduce_pb2_grpc.ReducerStub(channel)
 
+        sleep(2) # wait for mappers and reducers to start
+
         logging.info(f"Reading input data from '{POINTS_FILE}'.")
+        distrib = list()
         with open(POINTS_FILE) as points_file:
             points = points_file.readlines()
             print(f"read {len(points)} points.")
+            q, r = divmod(len(points), args.num_mappers)
+            distrib = [(i * q + min(i, r), (i + 1) * q + min(i+1, r)) for i in range(args.num_mappers)]
+
+        for i, mid in enumerate(self.mapper.keys()):
+            req = mapreduce_pb2.MapRequest()
+            req.id = mid
+            req.start, req.end = distrib[i]
+            req.reducers = args.num_reducers
+            res = self.mapper[mid].Map(req)
 
         logging.info(f"Stopping {args.num_mappers} mapper instances.")
         for mapper in self.mapper_proc.values():
