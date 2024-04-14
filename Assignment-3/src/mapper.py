@@ -52,6 +52,8 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
                 
             closest_centroid[idx].append(point)
 
+        # TODO: Handle sparse centroids, i.e. number of centroids < partitions
+
         keys = list(closest_centroid.keys())
         values = list(closest_centroid.values())
 
@@ -71,7 +73,7 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
                 pickle.dump(chunk, f)
 
 
-    def GetMap(self, request:mapreduce_pb2.PartitionRequest, context):
+    def GetPartition(self, request:mapreduce_pb2.PartitionRequest, context):
         """Return the partition file for the given partition number"""
         response:mapreduce_pb2.PartitionResponse = mapreduce_pb2.PartitionResponse()
 
