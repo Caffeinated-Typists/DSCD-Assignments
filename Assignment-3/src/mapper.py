@@ -86,7 +86,7 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
 
     def Ping(self, request, context):
         response:mapreduce_pb2.Response = mapreduce_pb2.Response()
-        response.status = 1
+        response.status = True
 
         return response
 
