@@ -6,27 +6,28 @@ import sys
 import numpy as np
 import pickle
 
-from proto import mapreduce_pb2
-from proto import mapreduce_pb2_grpc
+import mapreduce_pb2
+import mapreduce_pb2_grpc
 
 POINTS_FILE:str = "Data/Input/points.txt"
 CENTRIODS_FILE:str = "Data/centroids.txt"
 MAPPERS_ROOT:str = "Data/Mappers"
 
+MAPPER_PORT:int = 50000
 
 class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
     def __init__(self):
         self.mapper_id = 0
 
-    def Map(self, request:mapreduce_pb2.MapRequest, context):
+    def map_compute(self, id, start, end, r):
         # read the points and centroids file
         points:np.ndarray = None
         centroids:np.ndarray = None
-        self.mapper_id = request.id
+        self.mapper_id = id
 
         with open(POINTS_FILE, "r") as f:
             points = f.readlines()
-            lines = islice(points, request.start, request.end)
+            lines = islice(points, start, end)
             lines = list(map(lambda x: x.strip(), lines))
             lines = list(map(lambda x: x.split(','), lines))
             lines = list(map(lambda x: list(map(float, x)), lines))
@@ -52,13 +53,11 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
                 
             closest_centroid[idx].append(point)
 
-        # TODO: Handle sparse centroids, i.e. number of centroids < partitions
-
         keys = list(closest_centroid.keys())
         values = list(closest_centroid.values())
 
-        key_chunks = np.array_split(keys, request.k)
-        value_chunks = np.array_split(values, request.k)
+        key_chunks = np.array_split(keys, r)
+        value_chunks = np.array_split(values, r)
 
         # make the directory for the mapper if it does not exist
         try:
@@ -72,6 +71,10 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
             with open(f"{MAPPERS_ROOT}/M{self.mapper_id}/partition_{i}.pkl", "wb") as f:
                 pickle.dump(chunk, f)
 
+    def Map(self, request:mapreduce_pb2.MapRequest, context):
+        # TODO: call map_compute in background
+        return mapreduce_pb2.Response()
+    
 
     def GetPartition(self, request:mapreduce_pb2.PartitionRequest, context):
         """Return the partition file for the given partition number"""
@@ -101,6 +104,10 @@ if __name__ == "__main__":
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     mapreduce_pb2_grpc.add_MapperServicer_to_server(MapperServicer(), server)
     server.add_insecure_port(f"[::]:{port}")
+
+    channel = grpc.insecure_channel(f"127.0.0.1:{MAPPER_PORT}")
+    master_stub = mapreduce_pb2_grpc.MasterStub(channel)
+
     try:
         server.start()
         server.wait_for_termination()
