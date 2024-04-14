@@ -1,5 +1,6 @@
 from concurrent import futures
 from itertools import islice
+from os import mkdir
 import grpc
 import sys
 import numpy as np
@@ -15,13 +16,13 @@ MAPPERS_ROOT:str = "Data/Mappers"
 
 class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
     def __init__(self):
-        pass
+        self.mapper_id = 0
 
     def Map(self, request:mapreduce_pb2.MapRequest, context):
         # read the points and centroids file
         points:np.ndarray = None
         centroids:np.ndarray = None
-        
+        self.mapper_id = request.id
 
         with open(POINTS_FILE, "r") as f:
             points = f.readlines()
@@ -51,25 +52,41 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
                 
             closest_centroid[idx].append(point)
 
+        # TODO: Handle sparse centroids, i.e. number of centroids < partitions
+
         keys = list(closest_centroid.keys())
         values = list(closest_centroid.values())
 
         key_chunks = np.array_split(keys, request.k)
-        value_chunks = np.array_split(values, request.reducers)
+        value_chunks = np.array_split(values, request.k)
+
+        # make the directory for the mapper if it does not exist
+        try:
+            mkdir(f"{MAPPERS_ROOT}/M{self.mapper_id}")
+        except FileExistsError:
+            pass
 
         # Reconstruct the chunks as dictionaries and store them in files
         for i, (key_chunk, value_chunk) in enumerate(zip(key_chunks, value_chunks)):
             chunk = dict(zip(key_chunk, value_chunk))
-            with open(f"{MAPPERS_ROOT}/M{request.id}/partition_{i}.pkl", "wb") as f:
+            with open(f"{MAPPERS_ROOT}/M{self.mapper_id}/partition_{i}.pkl", "wb") as f:
                 pickle.dump(chunk, f)
 
 
-    def GetMap(self, request, context):
-        return super().GetMap(request, context)
+    def GetPartition(self, request:mapreduce_pb2.PartitionRequest, context):
+        """Return the partition file for the given partition number"""
+        response:mapreduce_pb2.PartitionResponse = mapreduce_pb2.PartitionResponse()
+
+        with open(f"{MAPPERS_ROOT}/M{self.mapper_id}/partition_{request.idx}.pkl", "rb") as f:
+            data = pickle.load(f)
+            response.data = pickle.dumps(data)
+
+        return response
+
 
     def Ping(self, request, context):
         response:mapreduce_pb2.Response = mapreduce_pb2.Response()
-        response.status = 1
+        response.status = True
 
         return response
 
