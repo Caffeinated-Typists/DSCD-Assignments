@@ -5,6 +5,7 @@ import grpc
 import sys
 import numpy as np
 import pickle
+import threading
 
 import mapreduce_pb2
 import mapreduce_pb2_grpc
@@ -13,7 +14,7 @@ POINTS_FILE:str = "Data/Input/points.txt"
 CENTRIODS_FILE:str = "Data/centroids.txt"
 MAPPERS_ROOT:str = "Data/Mappers"
 
-MAPPER_PORT:int = 50000
+MASTER_PORT:int = 50000
 
 class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
     def __init__(self):
@@ -41,23 +42,15 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
             centroids = list(map(lambda x: list(map(float, x)), centroids))
             centroids = np.array(centroids)
 
-        # dictionary to store the closest centroid for each point
-        closest_centroid = {} 
+        # array to store the closest centroid for each point
+        closest_centroid = [list() for _ in range(len(centroids))]
 
         # calculate the closest centroid for each point
         for point in points:
             distances = np.linalg.norm(centroids - point, axis=1)
-            idx = np.argmin(distances)
-            if closest_centroid.get(idx) is None:
-                closest_centroid[idx] = list()
-                
+            idx = np.argmin(distances)                
             closest_centroid[idx].append(point)
 
-        keys = list(closest_centroid.keys())
-        values = list(closest_centroid.values())
-
-        key_chunks = np.array_split(keys, r)
-        value_chunks = np.array_split(values, r)
 
         # make the directory for the mapper if it does not exist
         try:
@@ -65,14 +58,24 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
         except FileExistsError:
             pass
 
-        # Reconstruct the chunks as dictionaries and store them in files
-        for i, (key_chunk, value_chunk) in enumerate(zip(key_chunks, value_chunks)):
-            chunk = dict(zip(key_chunk, value_chunk))
-            with open(f"{MAPPERS_ROOT}/M{self.mapper_id}/partition_{i}.pkl", "wb") as f:
+        quotient, remainder = divmod(len(centroids), r)
+        splits = ([(i * quotient + min(i, remainder), (i + 1) * quotient + min(i + 1, remainder)) for i in range(r)])
+
+
+        for idx, split in enumerate(splits):
+            chunk = dict()
+            for i in range(split[0], split[1]):
+                chunk[i] = closest_centroid[i]
+            with open(f"M1/partition_{idx}.pkl", "wb") as f:
                 pickle.dump(chunk, f)
+
+        # call the MapDone RPC
+        master_stub.MapDone(mapreduce_pb2.Empty())
 
     def Map(self, request:mapreduce_pb2.MapRequest, context):
         # TODO: call map_compute in background
+        thread = threading.Thread(target=self.map_compute, args=(request.id, request.start-1, request.end-1, request.reducers))
+        thread.start()
         return mapreduce_pb2.Response()
     
 
@@ -105,7 +108,7 @@ if __name__ == "__main__":
     mapreduce_pb2_grpc.add_MapperServicer_to_server(MapperServicer(), server)
     server.add_insecure_port(f"[::]:{port}")
 
-    channel = grpc.insecure_channel(f"127.0.0.1:{MAPPER_PORT}")
+    channel = grpc.insecure_channel(f"127.0.0.1:{MASTER_PORT}")
     master_stub = mapreduce_pb2_grpc.MasterStub(channel)
 
     try:
