@@ -112,6 +112,7 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
         thread = threading.Thread(target=self.__reduce_run)
         thread.start()
 
+        self.logger.info(f"Reducer {self.reducer_id} acknowledged the reduce request")
         return mapreduce_pb2.Response(status=True)
     
     def GetCentroid(self, request, context)->mapreduce_pb2.CentroidResult:
@@ -119,13 +120,13 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
         response:mapreduce_pb2.CentroidResult = mapreduce_pb2.CentroidResult()
         response.status = True
         response.data = pickle.dumps(self.new_centroids)
-        return response
         self.logger.info(f"Reducer {self.reducer_id} sent new centroids to master")
+        return response
 
         
     def Ping(self, request, context)->mapreduce_pb2.Response:
-        return mapreduce_pb2.Response(status=True)
         self.logger.info(f"Reducer {self.reducer_id} responded to ping request")
+        return mapreduce_pb2.Response(status=True)
     
 if __name__ == "__main__":
     if len(sys.argv) < 2:
