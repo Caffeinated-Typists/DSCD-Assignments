@@ -92,7 +92,7 @@ class MasterServicer(mapreduce_pb2_grpc.MasterServicer):
         _centroids = np.random.rand(self.num_centroids, dimension)
         for i, c in enumerate(_centroids):
             self.centroids[i] = c
-        print(self.centroids)
+        logging.info(f"Initializing with centroids {self.centroids}")
         with open(CENTRIODS_FILE, 'w') as centroids_file:
             for c in self.centroids.values():
                 centroids_file.write(','.join(map(str, list(c)))+'\n')
@@ -149,17 +149,21 @@ class MasterServicer(mapreduce_pb2_grpc.MasterServicer):
     def monitor(self):
         def check_recover(instances: list, instance_type: str):
             for instance in instances:
+                status = False
                 try:
-                    instance.stub.Ping(mapreduce_pb2.Empty())
-                except:
-                    logging.info(f"Ping for {instance_type} {instance.port} failed, restarting...")
-                    instance.process.terminate()
-                    instance.process = Popen(["python3", f"{instance_type}.py", str(instance.port)])
-                    sleep(1)
-                    if instance_type == "mapper":
-                        instance.stub.Map(instance.request)
-                    elif instance_type == "reducer":
-                        instance.stub.Reduce(instance.request)
+                    response = instance.stub.Ping(mapreduce_pb2.Empty())
+                    status = response.status
+                except Exception as e:
+                    print(f"Caught exception while pinging {instance_type} {instance.port}")
+                if status: continue
+                logging.info(f"Ping for {instance_type} {instance.port} failed, restarting...")
+                instance.process.terminate()
+                instance.process = Popen(["python3", f"{instance_type}.py", str(instance.port)])
+                sleep(1)
+                if instance_type == "mapper":
+                    instance.stub.Map(instance.request)
+                elif instance_type == "reducer":
+                    instance.stub.Reduce(instance.request)
 
         while self.completed == False:
             check_recover(list(self.mappers.values()), "mapper")
@@ -203,7 +207,7 @@ if __name__ == "__main__":
     server.add_insecure_port(f"[::]:{args.listen_port}")
     try:
         server.start()
-        sleep(1) # wait for mappers and reducers to start
+        sleep(2) # wait for mappers and reducers to start
         master.run()
         server.stop(grace=None)
     except KeyboardInterrupt:

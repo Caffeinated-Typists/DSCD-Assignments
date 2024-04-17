@@ -27,8 +27,7 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
         self.num_mappers = None
         self.centroid_points = None
 
-        logging.basicConfig(filename=f"{REDUCERS_ROOT}/logs.txt", level=logging.INFO)
-        self.logger = logging.getLogger(__name__)
+        logging.basicConfig(level=logging.INFO)
 
     def __assert_dimensions(self, points:np.ndarray)->None:
             
@@ -51,7 +50,7 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
             resp:mapreduce_pb2.PartitionResponse = mapper_stub.GetPartition(req)
 
             res_data = pickle.loads(resp.data)
-            self.logger.info(f"Reducer {self.reducer_id} fetched {len(res_data)} centroids from mapper {mapper_port - BASE_PORT_MAPPER}")
+            logging.info(f"Reducer {self.reducer_id} fetched {len(res_data)} centroids from mapper {mapper_port - BASE_PORT_MAPPER}")
 
             for centroid_id in res_data.keys():
 
@@ -62,13 +61,13 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
                     self.centroid_points[centroid_id] = list()
                 self.centroid_points[centroid_id].extend(res_data[centroid_id])
 
-        self.logger.info(f"Reducer {self.reducer_id} fetched {self.centroid_points} centroids")
+        logging.info(f"Reducer {self.reducer_id} fetched {len(self.centroid_points)} centroids")
 
     def __reduce_compute(self)->None:
 
         self.new_centroids = dict()
         if self.num_dims is None:
-            self.logger.info(f"Reducer {self.reducer_id} has no points to compute centroids")
+            logging.info(f"Reducer {self.reducer_id} has no points to compute centroids")
             return
 
         centroid_update = dict()
@@ -86,7 +85,7 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
                 pass
             self.new_centroids[centroid_id] = centroid_update[centroid_id][0] / centroid_update[centroid_id][1]
         
-        self.logger.info(f"Reducer {self.reducer_id} computed new centroids - {self.new_centroids}")
+        logging.info(f"Reducer {self.reducer_id} computed new centroids - {self.new_centroids}")
 
     def __reduce_finish(self)->None:
 
@@ -94,11 +93,11 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
         with open(f"{REDUCERS_ROOT}/R{self.reducer_id + 1}.txt", "w") as f:
             for centroid_id in self.new_centroids.keys():
                 f.write(f"{centroid_id}: {self.new_centroids[centroid_id]}\n")
-        self.logger.info(f"Reducer {self.reducer_id} wrote new centroids to file")
+        logging.info(f"Reducer {self.reducer_id} wrote new centroids to file")
 
         # Notify the master that the reduce computation is done
         master_stub.ReduceDone(mapreduce_pb2.DoneRequest(id=self.reducer_id))
-        self.logger.info(f"Reducer {self.reducer_id} called ReduceDone on the master")
+        logging.info(f"Reducer {self.reducer_id} called ReduceDone on the master")
 
     def __reduce_run(self)->None:
         
@@ -112,13 +111,13 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
         self.partition_idx = request.partition_idx
         self.num_mappers = request.mappers
 
-        self.logger.info(f"Reducer {self.reducer_id} started for partition {self.partition_idx} with {self.num_mappers} mappers")
+        logging.info(f"Reducer {self.reducer_id} started for partition {self.partition_idx} with {self.num_mappers} mappers")
 
         # Launch the reduce_compute method in a separate thread
         thread = threading.Thread(target=self.__reduce_run)
         thread.start()
 
-        self.logger.info(f"Reducer {self.reducer_id} acknowledged the reduce request")
+        logging.info(f"Reducer {self.reducer_id} acknowledged the reduce request")
         return mapreduce_pb2.Response(status=True)
     
     def GetCentroid(self, request, context)->mapreduce_pb2.CentroidResult:
@@ -126,12 +125,12 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
         response:mapreduce_pb2.CentroidResult = mapreduce_pb2.CentroidResult()
         response.status = True
         response.data = pickle.dumps(self.new_centroids)
-        self.logger.info(f"Reducer {self.reducer_id} sent new centroids to master")
+        logging.info(f"Reducer {self.reducer_id} sent new centroids to master")
         return response
 
         
     def Ping(self, request, context)->mapreduce_pb2.Response:
-        self.logger.info(f"Reducer {self.reducer_id} responded to ping request")
+        logging.info(f"Reducer {self.reducer_id} responded to ping request")
         return mapreduce_pb2.Response(status=True)
     
 if __name__ == "__main__":

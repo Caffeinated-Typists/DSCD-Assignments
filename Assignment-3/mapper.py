@@ -7,6 +7,7 @@ import numpy as np
 import pickle
 import threading
 import logging
+from time import sleep
 
 import mapreduce_pb2
 import mapreduce_pb2_grpc
@@ -74,7 +75,8 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
         master_stub.MapDone(mapreduce_pb2.DoneRequest(id=self.mapper_id))
 
     def Map(self, request:mapreduce_pb2.MapRequest, context):
-        logging.info(f"Received Map RPC request from master.")
+        self.mapper_id = request.id
+        logging.info(f"Mapper {self.mapper_id} received Map RPC request from master.")
         thread = threading.Thread(target=self.map_compute, args=(request.id, request.start, request.end, request.reducers))
         thread.start()
         return mapreduce_pb2.Response(status=True)
@@ -82,7 +84,7 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
 
     def GetPartition(self, request:mapreduce_pb2.PartitionRequest, context):
         """Return the partition file for the given partition number"""
-        logging.info(f"Received GetPartition RPC request.")
+        logging.info(f"Mapper {self.mapper_id} received GetPartition RPC request.")
         response:mapreduce_pb2.PartitionResponse = mapreduce_pb2.PartitionResponse()
 
         with open(f"{MAPPERS_ROOT}/M{self.mapper_id}/partition_{request.idx}.pkl", "rb") as f:
@@ -95,9 +97,7 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
     def Ping(self, request, context):
         response:mapreduce_pb2.Response = mapreduce_pb2.Response()
         response.status = True
-
         return response
-
 
 
 if __name__ == "__main__":
