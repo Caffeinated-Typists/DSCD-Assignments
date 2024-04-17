@@ -3,6 +3,8 @@ import logging
 from subprocess import Popen
 from time import sleep
 
+from numpy import random
+
 import grpc
 from concurrent import futures
 
@@ -61,7 +63,7 @@ class MasterServicer(mapreduce_pb2_grpc.MasterServicer):
 
     mappers: dict[int, Mapper] = dict()
     reducers: dict[int, Reducer] = dict()
-    centroids: list[float] = list()
+    centroids: list[list[float]] = list()
 
     def __init__(self, args) -> None:
         super().__init__()
@@ -69,12 +71,17 @@ class MasterServicer(mapreduce_pb2_grpc.MasterServicer):
         self.num_reducers = args.num_reducers
         self.num_centroids = args.num_centroids
         self.num_iterations = args.num_iterations
+        
+        # Generate initial set of centroids
+        rng = random.default_rng()
+        self.centroids = [(rng.random(), rng.random()) for _ in range(self.num_centroids)]
+
         logging.info(f"Reading input data from '{POINTS_FILE}'.")
         with open(POINTS_FILE) as points_file:
             self.num_points = len(points_file.readlines())
             logging.info(f"Read {self.num_points} points.")
 
-    def run(self):
+        # setup mappers and reducers
         q, r = divmod(self.num_points, args.num_mappers)
         for i in range(self.num_mappers):
             id = BASE_PORT_MAPPER + i
@@ -89,13 +96,53 @@ class MasterServicer(mapreduce_pb2_grpc.MasterServicer):
             id = BASE_PORT_REDUCER + i
             self.reducers[id] = Reducer(id)
 
-        sleep(2) # wait for mappers and reducers to start
+    def run(self):
+        cur_iteration: int = 0
+        
+        for mapper in self.mappers.values():
+            mapper.status = False
+            del mapper.request.centroids
+            # mapper.request.centroids.extend(self.centroids)
+            try:
+                response = mapper.stub.Map(mapper.request)
+                print(response)
+            except Exception as e:
+                print(e)
+        
+        while True:
+            for mapper in self.mappers.values():
+                try:
+                    response = mapper.stub.Ping(mapreduce_pb2.Empty())
+                    print(response)
+                except Exception as e:
+                    print(e)
+            status = [mapper.status for mapper in self.mappers.values()]
+            if False not in status:
+                break
+
+        while True:
+            for reducer in self.reducers.values():
+                try:
+                    response = reducer.stub.Ping(mapreduce_pb2.Empty())
+                    print(response)
+                except Exception as e:
+                    print(e)
+            status = [reducer.status for reducer in self.reducers.values()]
+            if False not in status:
+                break
+
 
     def MapDone(self, request, context):
-        return super().MapDone(request, context)
+        logging.info(f"Received MapDone request from {request.peer}.")
+        id = int(request.peer.split(":")[-1])
+        self.mappers[id].status = True
+        return mapreduce_pb2.Response(status=True)
 
     def ReduceDone(self, request, context):
-        return super().ReduceDone(request, context)
+        logging.info(f"Received ReduceDone request from {request.peer}.")
+        id = int(request.peer.split(":")[-1])
+        self.reducers[id].status = True
+        return mapreduce_pb2.Response(status=True)
 
 
 if __name__ == "__main__":
@@ -110,12 +157,13 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    logging.info(f"Starting master instance {args.listen_port}.")
     master = MasterServicer(args)
     mapreduce_pb2_grpc.add_MasterServicer_to_server(master, server)
     server.add_insecure_port(f"[::]:{args.listen_port}")
     try:
         server.start()
-        logging.info(f"Master started, listening on port {args.listen_port}.")
+        sleep(2) # wait for mappers and reducers to start
         master.run()
         server.wait_for_termination()
     except KeyboardInterrupt:
