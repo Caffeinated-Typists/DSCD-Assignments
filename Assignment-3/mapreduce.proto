@@ -53,8 +53,16 @@ message ReduceRequest {
 
 message ReduceResult {
     bool status = 1;
-    int32 centroid_id = 2;
-    double updated_point = 3;
+    bytes data = 2; /* Used for serialization of the result of the reduce operation
+    // dictionary of the form 
+    // {
+    //    k1: v1, // key k1 and value v1
+    //    k2: v2, // key k2 and value v2
+    //    ...
+    // }
+    // k{i} is the index of centroid ranging from 0 to k-1 
+    // and v{i} is the updated centroid as a numpy.ndarray
+    */
 }
 
 message Empty {} // google.protobuf.Empty
