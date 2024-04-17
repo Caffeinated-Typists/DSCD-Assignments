@@ -2,8 +2,10 @@ import argparse
 import logging
 from subprocess import Popen
 from time import sleep
+from threading import Thread
+import pickle
 
-from numpy import random
+import numpy as np
 
 import grpc
 from concurrent import futures
@@ -41,10 +43,12 @@ class Reducer:
     port: int # alson considered as id
     stub: mapreduce_pb2_grpc.ReducerStub
     process: Popen # reducer process obj
+    request: mapreduce_pb2.ReduceRequest
     status: bool
 
     def __init__(self, port: int) -> None:
         self.port = port
+        self.request = mapreduce_pb2.ReduceRequest()
         logging.info(f"Starting reducer instance {self.port}.")
         self.process = Popen(["python3", "reducer.py", str(self.port)])
         channel = grpc.insecure_channel(f"127.0.0.1:{self.port}")
@@ -63,7 +67,10 @@ class MasterServicer(mapreduce_pb2_grpc.MasterServicer):
 
     mappers: dict[int, Mapper] = dict()
     reducers: dict[int, Reducer] = dict()
-    centroids: list[list[float]] = list()
+
+    centroids: dict = dict()
+
+    completed: bool = False
 
     def __init__(self, args) -> None:
         super().__init__()
@@ -72,14 +79,23 @@ class MasterServicer(mapreduce_pb2_grpc.MasterServicer):
         self.num_centroids = args.num_centroids
         self.num_iterations = args.num_iterations
         
-        # Generate initial set of centroids
-        rng = random.default_rng()
-        self.centroids = [(rng.random(), rng.random()) for _ in range(self.num_centroids)]
-
         logging.info(f"Reading input data from '{POINTS_FILE}'.")
+        dimension = 0
         with open(POINTS_FILE) as points_file:
-            self.num_points = len(points_file.readlines())
-            logging.info(f"Read {self.num_points} points.")
+            points = points_file.readlines()
+            self.num_points = len(points)
+            dimension = len(points[0].split(','))
+        logging.info(f"Read {self.num_points} points.")
+        logging.info(f"Point dimension is {dimension}.") 
+
+        # Generate initial set of centroids
+        _centroids = np.random.rand(self.num_centroids, dimension)
+        for i, c in enumerate(_centroids):
+            self.centroids[i] = c
+        print(self.centroids)
+        with open(CENTRIODS_FILE, 'w') as centroids_file:
+            for c in self.centroids.values():
+                centroids_file.write(','.join(map(str, list(c)))+'\n')
 
         # setup mappers and reducers
         q, r = divmod(self.num_points, args.num_mappers)
@@ -94,64 +110,88 @@ class MasterServicer(mapreduce_pb2_grpc.MasterServicer):
         
         for i in range(self.num_reducers):
             id = BASE_PORT_REDUCER + i
-            self.reducers[id] = Reducer(id)
-
-    def run(self):
-        cur_iteration: int = 0
-        
+            reducer = Reducer(id)
+            reducer.request.id = id
+            reducer.request.partition_idx = i
+            reducer.request.mappers = self.num_mappers
+            self.reducers[id] = reducer
+    
+    def process_iteration(self, cur_iteration: int):
+        logging.info(f"Running iteration {cur_iteration}.")
         for mapper in self.mappers.values():
             mapper.status = False
-            del mapper.request.centroids
-            # mapper.request.centroids.extend(self.centroids)
-            try:
-                response = mapper.stub.Map(mapper.request)
-                print(response)
-            except Exception as e:
-                print(e)
+            try: mapper.stub.Map(mapper.request)
+            except Exception as e: print(e)
         
         while True:
-            for mapper in self.mappers.values():
-                try:
-                    response = mapper.stub.Ping(mapreduce_pb2.Empty())
-                    print(response)
-                except Exception as e:
-                    print(e)
             status = [mapper.status for mapper in self.mappers.values()]
-            if False not in status:
-                break
+            if False not in status: break
+
+        for reducer in self.reducers.values():
+            reducer.status = False
+            try: reducer.stub.Reduce(reducer.request)
+            except Exception as e: print(e)
 
         while True:
-            for reducer in self.reducers.values():
-                try:
-                    response = reducer.stub.Ping(mapreduce_pb2.Empty())
-                    print(response)
-                except Exception as e:
-                    print(e)
             status = [reducer.status for reducer in self.reducers.values()]
-            if False not in status:
-                break
+            if False not in status: break
 
+        for reducer in self.reducers.values():
+            try:
+                response = reducer.stub.GetCentroid(mapreduce_pb2.Empty())
+                for i, c in pickle.loads(response.data).items():
+                    self.centroids[i] = c
+            except Exception as e: print(e)
+        with open(CENTRIODS_FILE, 'w') as centroids_file:
+            for c in self.centroids.values():
+                centroids_file.write(','.join(map(str, list(c)))+'\n')
+
+    def monitor(self):
+        def check_recover(instances: list, instance_type: str):
+            for instance in instances:
+                try:
+                    instance.stub.Ping(mapreduce_pb2.Empty())
+                except:
+                    logging.info(f"Ping for {instance_type} {instance.port} failed, restarting...")
+                    instance.process.terminate()
+                    instance.process = Popen(["python3", f"{instance_type}.py", str(instance.port)])
+                    sleep(1)
+                    if instance_type == "mapper":
+                        instance.stub.Map(instance.request)
+                    elif instance_type == "reducer":
+                        instance.stub.Reduce(instance.request)
+
+        while self.completed == False:
+            check_recover(list(self.mappers.values()), "mapper")
+            check_recover(list(self.reducers.values()), "reducer")
+        return
+
+    def run(self):
+        mon = Thread(target=self.monitor)
+        mon.start()
+        for cur_iteration in range(0, self.num_iterations):
+            self.process_iteration(cur_iteration)
+        self.completed = True
+        mon.join()
 
     def MapDone(self, request, context):
-        logging.info(f"Received MapDone request from {request.peer}.")
-        id = int(request.peer.split(":")[-1])
-        self.mappers[id].status = True
+        logging.info(f"Received MapDone request from {request.id}.")
+        self.mappers[request.id].status = True
         return mapreduce_pb2.Response(status=True)
 
     def ReduceDone(self, request, context):
-        logging.info(f"Received ReduceDone request from {request.peer}.")
-        id = int(request.peer.split(":")[-1])
-        self.reducers[id].status = True
+        logging.info(f"Received ReduceDone request from {request.id}.")
+        self.reducers[request.id].status = True
         return mapreduce_pb2.Response(status=True)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", type=int, dest="listen_port", default=50000)
-    parser.add_argument("-m", type=int, dest="num_mappers", choices=range(1,10), default=1)
-    parser.add_argument("-r", type=int, dest="num_reducers", choices=range(1,10), default=1)
-    parser.add_argument("-k", type=int, dest="num_centroids", choices=range(1,10), default=1)
-    parser.add_argument("-i", type=int, dest="num_iterations", choices=range(1,10), default=1)
+    parser.add_argument("-m", type=int, dest="num_mappers", choices=range(1,50), default=1)
+    parser.add_argument("-r", type=int, dest="num_reducers", choices=range(1,50), default=1)
+    parser.add_argument("-k", type=int, dest="num_centroids", choices=range(1,50), default=1)
+    parser.add_argument("-i", type=int, dest="num_iterations", choices=range(1,100), default=10)
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
@@ -163,9 +203,9 @@ if __name__ == "__main__":
     server.add_insecure_port(f"[::]:{args.listen_port}")
     try:
         server.start()
-        sleep(2) # wait for mappers and reducers to start
+        sleep(1) # wait for mappers and reducers to start
         master.run()
-        server.wait_for_termination()
+        server.stop(grace=None)
     except KeyboardInterrupt:
         logging.info("KeyboardInterrupt received.")
         server.stop(grace=None)

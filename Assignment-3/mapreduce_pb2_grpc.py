@@ -16,12 +16,12 @@ class MasterStub(object):
         """
         self.MapDone = channel.unary_unary(
                 '/Master/MapDone',
-                request_serializer=mapreduce__pb2.Empty.SerializeToString,
+                request_serializer=mapreduce__pb2.DoneRequest.SerializeToString,
                 response_deserializer=mapreduce__pb2.Response.FromString,
                 )
         self.ReduceDone = channel.unary_unary(
                 '/Master/ReduceDone',
-                request_serializer=mapreduce__pb2.Empty.SerializeToString,
+                request_serializer=mapreduce__pb2.DoneRequest.SerializeToString,
                 response_deserializer=mapreduce__pb2.Response.FromString,
                 )
 
@@ -46,12 +46,12 @@ def add_MasterServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'MapDone': grpc.unary_unary_rpc_method_handler(
                     servicer.MapDone,
-                    request_deserializer=mapreduce__pb2.Empty.FromString,
+                    request_deserializer=mapreduce__pb2.DoneRequest.FromString,
                     response_serializer=mapreduce__pb2.Response.SerializeToString,
             ),
             'ReduceDone': grpc.unary_unary_rpc_method_handler(
                     servicer.ReduceDone,
-                    request_deserializer=mapreduce__pb2.Empty.FromString,
+                    request_deserializer=mapreduce__pb2.DoneRequest.FromString,
                     response_serializer=mapreduce__pb2.Response.SerializeToString,
             ),
     }
@@ -76,7 +76,7 @@ class Master(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/Master/MapDone',
-            mapreduce__pb2.Empty.SerializeToString,
+            mapreduce__pb2.DoneRequest.SerializeToString,
             mapreduce__pb2.Response.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
@@ -93,7 +93,7 @@ class Master(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/Master/ReduceDone',
-            mapreduce__pb2.Empty.SerializeToString,
+            mapreduce__pb2.DoneRequest.SerializeToString,
             mapreduce__pb2.Response.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
@@ -240,6 +240,11 @@ class ReducerStub(object):
                 request_serializer=mapreduce__pb2.ReduceRequest.SerializeToString,
                 response_deserializer=mapreduce__pb2.Response.FromString,
                 )
+        self.GetCentroid = channel.unary_unary(
+                '/Reducer/GetCentroid',
+                request_serializer=mapreduce__pb2.Empty.SerializeToString,
+                response_deserializer=mapreduce__pb2.CentroidResult.FromString,
+                )
         self.Ping = channel.unary_unary(
                 '/Reducer/Ping',
                 request_serializer=mapreduce__pb2.Empty.SerializeToString,
@@ -251,6 +256,12 @@ class ReducerServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def Reduce(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetCentroid(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -269,6 +280,11 @@ def add_ReducerServicer_to_server(servicer, server):
                     servicer.Reduce,
                     request_deserializer=mapreduce__pb2.ReduceRequest.FromString,
                     response_serializer=mapreduce__pb2.Response.SerializeToString,
+            ),
+            'GetCentroid': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCentroid,
+                    request_deserializer=mapreduce__pb2.Empty.FromString,
+                    response_serializer=mapreduce__pb2.CentroidResult.SerializeToString,
             ),
             'Ping': grpc.unary_unary_rpc_method_handler(
                     servicer.Ping,
@@ -299,6 +315,23 @@ class Reducer(object):
         return grpc.experimental.unary_unary(request, target, '/Reducer/Reduce',
             mapreduce__pb2.ReduceRequest.SerializeToString,
             mapreduce__pb2.Response.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GetCentroid(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/Reducer/GetCentroid',
+            mapreduce__pb2.Empty.SerializeToString,
+            mapreduce__pb2.CentroidResult.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 

@@ -6,6 +6,7 @@ import sys
 import numpy as np
 import pickle
 import threading
+import logging
 
 import mapreduce_pb2
 import mapreduce_pb2_grpc
@@ -66,21 +67,22 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
             chunk = dict()
             for i in range(split[0], split[1]):
                 chunk[i] = closest_centroid[i]
-            with open(f"M1/partition_{idx}.pkl", "wb") as f:
+            with open(f"{MAPPERS_ROOT}/M{self.mapper_id}/partition_{idx}.pkl", "wb") as f:
                 pickle.dump(chunk, f)
 
         # call the MapDone RPC
-        master_stub.MapDone(mapreduce_pb2.Empty())
+        master_stub.MapDone(mapreduce_pb2.DoneRequest(id=self.mapper_id))
 
     def Map(self, request:mapreduce_pb2.MapRequest, context):
-        # TODO: call map_compute in background
-        thread = threading.Thread(target=self.map_compute, args=(request.id, request.start-1, request.end-1, request.reducers))
+        logging.info(f"Received Map RPC request from master.")
+        thread = threading.Thread(target=self.map_compute, args=(request.id, request.start, request.end, request.reducers))
         thread.start()
         return mapreduce_pb2.Response(status=True)
     
 
     def GetPartition(self, request:mapreduce_pb2.PartitionRequest, context):
         """Return the partition file for the given partition number"""
+        logging.info(f"Received GetPartition RPC request.")
         response:mapreduce_pb2.PartitionResponse = mapreduce_pb2.PartitionResponse()
 
         with open(f"{MAPPERS_ROOT}/M{self.mapper_id}/partition_{request.idx}.pkl", "rb") as f:
@@ -102,6 +104,8 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python3 mapper.py <port>")
         sys.exit(1)
+
+    logging.basicConfig(level=logging.INFO)
     
     port:int = int(sys.argv[1])
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))

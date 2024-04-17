@@ -27,8 +27,8 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
         self.num_mappers = None
         self.centroid_points = None
 
+        logging.basicConfig(filename=f"{REDUCERS_ROOT}/logs.txt", level=logging.INFO)
         self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.INFO)
 
     def __assert_dimensions(self, points:np.ndarray)->None:
             
@@ -62,7 +62,7 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
                     self.centroid_points[centroid_id] = list()
                 self.centroid_points[centroid_id].extend(res_data[centroid_id])
 
-        self.logger.info(f"Reducer {self.reducer_id} fetched {len(self.centroid_points)} centroids")
+        self.logger.info(f"Reducer {self.reducer_id} fetched {self.centroid_points} centroids")
 
     def __reduce_compute(self)->None:
 
@@ -97,7 +97,7 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
         self.logger.info(f"Reducer {self.reducer_id} wrote new centroids to file")
 
         # Notify the master that the reduce computation is done
-        master_stub.ReduceDone(mapreduce_pb2.Response(status=True))
+        master_stub.ReduceDone(mapreduce_pb2.DoneRequest(id=self.reducer_id))
         self.logger.info(f"Reducer {self.reducer_id} called ReduceDone on the master")
 
     def __reduce_run(self)->None:
