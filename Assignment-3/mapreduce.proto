@@ -2,7 +2,7 @@ syntax = "proto3";
 
 service Master {
     rpc MapDone (Empty) returns (Response) {}
-    rpc ReduceDone (Empty) returns (Response) {}
+    rpc ReduceDone (Empty) returns (ReduceResult) {}
 }
 
 service Mapper {
@@ -47,8 +47,14 @@ message PartitionResponse {
 
 message ReduceRequest {
     int32 id = 1;
-    int32 partition_id = 2;
+    int32 partition_idx = 2;
     int32 reducers = 3;
+}
+
+message ReduceResult {
+    bool status = 1;
+    int32 centroid_id = 2;
+    double updated_point = 3;
 }
 
 message Empty {} // google.protobuf.Empty
