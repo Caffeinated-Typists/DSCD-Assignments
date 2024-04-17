@@ -25,6 +25,7 @@ message MapRequest {
     int32 start = 2;
     int32 end = 3;
     int32 reducers = 4; // number of reducers
+    repeated float centroids = 5; // list of current centroids
 }
 
 message PartitionRequest {
