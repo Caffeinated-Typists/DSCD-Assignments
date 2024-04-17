@@ -66,6 +66,11 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
 
     def __reduce_compute(self)->None:
 
+        self.new_centroids = dict()
+        if self.num_dims is None:
+            self.logger.info(f"Reducer {self.reducer_id} has no points to compute centroids")
+            return
+
         centroid_update = dict()
         for centroid_id in self.centroid_points.keys():
             centroid_update[centroid_id] = [np.zeros(self.num_dims), 0]
@@ -76,8 +81,9 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
                 centroid_update[centroid_id][0] += point
                 centroid_update[centroid_id][1] += 1
 
-        self.new_centroids = dict()
         for centroid_id in centroid_update.keys():
+            if centroid_update[centroid_id][1] == 0:
+                pass
             self.new_centroids[centroid_id] = centroid_update[centroid_id][0] / centroid_update[centroid_id][1]
         
         self.logger.info(f"Reducer {self.reducer_id} computed new centroids - {self.new_centroids}")
