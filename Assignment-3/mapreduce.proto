@@ -2,7 +2,7 @@ syntax = "proto3";
 
 service Master {
     rpc MapDone (Empty) returns (Response) {}
-    rpc ReduceDone (Empty) returns (ReduceResult) {}
+    rpc ReduceDone (Empty) returns (Response) {}
 }
 
 service Mapper {
@@ -13,6 +13,7 @@ service Mapper {
 
 service Reducer {
     rpc Reduce (ReduceRequest) returns (Response) {}
+    rpc GetCentroid (CentroidRequest) returns (CentroidResult) {}
     rpc Ping (Empty) returns (Response) {}
 }
 
@@ -51,7 +52,11 @@ message ReduceRequest {
     int32 mappers = 3;
 }
 
-message ReduceResult {
+message CentroidRequest {
+    int32 id = 1;
+}
+
+message CentroidResult {
     bool status = 1;
     bytes data = 2; /* Used for serialization of the result of the reduce operation
     // dictionary of the form 

@@ -14,6 +14,7 @@ MASTER_PORT:int = 50000
 BASE_PORT_MAPPER: int = 50100
 
 CENTRIODS_FILE:str = "Data/centroids.txt"
+REDUCERS_ROOT:str = "Data/Reducers"
 
 class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
 
@@ -32,36 +33,7 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
             else:
                 assert self.num_dims == points.shape[1], "All points must have the same number of dimensions"
 
-    def reduce_compute(self)->None:
-
-        self.centroid_update = dict()
-        for centroid_id in self.centroid_points.keys():
-            self.centroid_update[centroid_id] = [np.zeros(self.num_dims), 0]
-
-        # Calculate the new centroid for the partition
-        for centroid_id in self.centroid_points.keys():
-            for point in self.centroid_points[centroid_id]:
-                self.centroid_update[centroid_id][0] += point
-                self.centroid_update[centroid_id][1] += 1
-
-        self.new_centroids = dict()
-        for centroid_id in self.centroid_update.keys():
-            self.new_centroids[centroid_id] = self.centroid_update[centroid_id][0] / self.centroid_update[centroid_id][1]
-
-        # Send the new centroid to the master
-        resp:mapreduce_pb2.ReduceResult = mapreduce_pb2.ReduceResult()
-        resp.status = True
-        resp.data = pickle.dumps(self.new_centroids)
-        master_stub.ReduceDone()
-
-        return
-
-    def Reduce(self, request:mapreduce_pb2.ReduceRequest, context)->mapreduce_pb2.Response:
-
-        self.reducer_id = request.id
-        self.partition_idx = request.partition_idx
-        self.num_mappers = request.mappers
-
+    def __fetch_points(self)->None:
         # Fetch the points from the mappers and store them in self.centroid_points
         #   - Assert that all the points have the same number of dimensions
 
@@ -85,11 +57,56 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
                     self.centroid_points[centroid_id] = list()
                 self.centroid_points[centroid_id].extend(res_data[centroid_id])
 
+    def __reduce_compute(self)->None:
+
+        centroid_update = dict()
+        for centroid_id in self.centroid_points.keys():
+            centroid_update[centroid_id] = [np.zeros(self.num_dims), 0]
+
+        # Calculate the new centroid for the partition
+        for centroid_id in self.centroid_points.keys():
+            for point in self.centroid_points[centroid_id]:
+                centroid_update[centroid_id][0] += point
+                centroid_update[centroid_id][1] += 1
+
+        self.new_centroids = dict()
+        for centroid_id in centroid_update.keys():
+            self.new_centroids[centroid_id] = centroid_update[centroid_id][0] / centroid_update[centroid_id][1]
+
+    def __reduce_finish(self)->None:
+
+        # Write the new centroid to a file
+        with open(f"{REDUCERS_ROOT}/R{self.reducer_id + 1}.txt", "w") as f:
+            for centroid_id in self.new_centroids.keys():
+                f.write(f"{centroid_id}: {self.new_centroids[centroid_id]}\n")
+
+        # Notify the master that the reduce computation is done
+        master_stub.ReduceDone(mapreduce_pb2.Response(status=True))
+
+    def __reduce_run(self)->None:
+        
+        self.__fetch_points()
+        self.__reduce_compute()
+        self.__reduce_finish()
+
+    def Reduce(self, request:mapreduce_pb2.ReduceRequest, context)->mapreduce_pb2.Response:
+
+        self.reducer_id = request.id
+        self.partition_idx = request.partition_idx
+        self.num_mappers = request.mappers
+
         # Launch the reduce_compute method in a separate thread
-        thread = threading.Thread(target=self.reduce_compute)
+        thread = threading.Thread(target=self.__reduce_run)
         thread.start()
 
         return mapreduce_pb2.Response(status=True)
+    
+    def GetCentroid(self, request, context)->mapreduce_pb2.CentroidResult:
+
+        response:mapreduce_pb2.CentroidResult = mapreduce_pb2.CentroidResult()
+        response.status = True
+        response.data = pickle.dumps(self.new_centroids)
+        return response
 
         
     def Ping(self, request, context)->mapreduce_pb2.Response:
