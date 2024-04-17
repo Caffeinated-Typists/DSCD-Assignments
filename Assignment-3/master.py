@@ -31,13 +31,13 @@ class MasterServicer(mapreduce_pb2_grpc.MasterServicer):
     def run(self, args):
         logging.info(f"Starting {args.num_mappers} mapper instances.")
         for mapper_id in range(BASE_PORT_MAPPER, BASE_PORT_MAPPER + args.num_mappers):
-            self.mapper_proc[mapper_id] = Popen(["python3", "src/mapper.py", str(mapper_id)])
+            self.mapper_proc[mapper_id] = Popen(["python3", "mapper.py", str(mapper_id)])
             channel = grpc.insecure_channel(f"127.0.0.1:{mapper_id}")
             self.mapper[mapper_id] = mapreduce_pb2_grpc.MapperStub(channel)
 
         logging.info(f"Starting {args.num_reducers} recducer instances.")
         for reducer_id in range(BASE_PORT_REDUCER, BASE_PORT_REDUCER + args.num_reducers):
-            self.reducer_proc[reducer_id] = Popen(["python3", "src/reducer.py", str(reducer_id)])
+            self.reducer_proc[reducer_id] = Popen(["python3", "reducer.py", str(reducer_id)])
             channel = grpc.insecure_channel(f"127.0.0.1:{reducer_id}")
             self.reducer[reducer_id] = mapreduce_pb2_grpc.ReducerStub(channel)
 

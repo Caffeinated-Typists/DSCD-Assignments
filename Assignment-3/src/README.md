@@ -1,4 +1,0 @@
-# Components
-- Master
-- Mapper
-- Reducer
