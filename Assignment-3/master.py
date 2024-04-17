@@ -136,15 +136,22 @@ class MasterServicer(mapreduce_pb2_grpc.MasterServicer):
             status = [reducer.status for reducer in self.reducers.values()]
             if False not in status: break
 
+        converged = True
         for reducer in self.reducers.values():
             try:
                 response = reducer.stub.GetCentroid(mapreduce_pb2.Empty())
                 for i, c in pickle.loads(response.data).items():
+                    if np.linalg.norm(self.centroids[i] - c) > 1e-5:
+                        converged = False
                     self.centroids[i] = c
             except Exception as e: print(e)
         with open(CENTRIODS_FILE, 'w') as centroids_file:
             for c in self.centroids.values():
                 centroids_file.write(','.join(map(str, list(c)))+'\n')
+        if converged:
+            logging.info(f"Converged on iteration {cur_iteration}.")
+            self.completed = True
+
 
     def monitor(self):
         def check_recover(instances: list, instance_type: str):
@@ -175,6 +182,7 @@ class MasterServicer(mapreduce_pb2_grpc.MasterServicer):
         mon.start()
         for cur_iteration in range(0, self.num_iterations):
             self.process_iteration(cur_iteration)
+            if self.completed: break
         self.completed = True
         mon.join()
 
