@@ -28,7 +28,7 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
         self.centroid_points = None
 
         self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(filename=f"{REDUCERS_ROOT}/logs.txt", level=logging.INFO)
 
     def __assert_dimensions(self, points:np.ndarray)->None:
             
