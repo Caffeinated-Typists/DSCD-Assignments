@@ -33,9 +33,9 @@ class ReducerServicer(mapreduce_pb2_grpc.ReducerServicer):
     def __assert_dimensions(self, points:np.ndarray)->None:
             
             if self.num_dims is None:
-                self.num_dims = points.shape[1]
+                self.num_dims = points.shape[0]
             else:
-                assert self.num_dims == points.shape[1], "All points must have the same number of dimensions"
+                assert self.num_dims == points.shape[0], "All points must have the same number of dimensions"
 
     def __fetch_points(self)->None:
         # Fetch the points from the mappers and store them in self.centroid_points
