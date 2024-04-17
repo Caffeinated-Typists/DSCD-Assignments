@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-from . import mapreduce_pb2 as mapreduce__pb2
+import mapreduce_pb2 as mapreduce__pb2
 
 
 class MasterStub(object):
