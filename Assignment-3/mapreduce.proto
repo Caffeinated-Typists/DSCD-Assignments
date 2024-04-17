@@ -2,7 +2,7 @@ syntax = "proto3";
 
 service Master {
     rpc MapDone (Empty) returns (Response) {}
-    rpc ReduceDone (Empty) returns (ReduceResult) {}
+    rpc ReduceDone (Empty) returns (Response) {}
 }
 
 service Mapper {
@@ -13,6 +13,7 @@ service Mapper {
 
 service Reducer {
     rpc Reduce (ReduceRequest) returns (Response) {}
+    rpc GetCentroid (CentroidRequest) returns (CentroidResult) {}
     rpc Ping (Empty) returns (Response) {}
 }
 
@@ -52,10 +53,22 @@ message ReduceRequest {
     int32 mappers = 3;
 }
 
-message ReduceResult {
+message CentroidRequest {
+    int32 id = 1;
+}
+
+message CentroidResult {
     bool status = 1;
-    int32 centroid_id = 2;
-    double updated_point = 3;
+    bytes data = 2; /* Used for serialization of the result of the reduce operation
+    // dictionary of the form 
+    // {
+    //    k1: v1, // key k1 and value v1
+    //    k2: v2, // key k2 and value v2
+    //    ...
+    // }
+    // k{i} is the index of centroid ranging from 0 to k-1 
+    // and v{i} is the updated centroid as a numpy.ndarray
+    */
 }
 
 message Empty {} // google.protobuf.Empty
