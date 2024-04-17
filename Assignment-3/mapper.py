@@ -76,7 +76,7 @@ class MapperServicer(mapreduce_pb2_grpc.MapperServicer):
         # TODO: call map_compute in background
         thread = threading.Thread(target=self.map_compute, args=(request.id, request.start-1, request.end-1, request.reducers))
         thread.start()
-        return mapreduce_pb2.Response()
+        return mapreduce_pb2.Response(status=True)
     
 
     def GetPartition(self, request:mapreduce_pb2.PartitionRequest, context):
